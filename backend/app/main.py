@@ -1,0 +1,514 @@
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import csv
+import json
+import logging
+from collections import Counter, defaultdict
+from datetime import datetime, timezone
+from io import StringIO
+from typing import Any
+
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import asc, desc, select
+from sqlalchemy.orm import Session, joinedload
+
+from .ai import GeminiLeadAI
+from .config import get_settings
+from .database import SessionLocal, get_db, init_db
+from .email_sync import sync_replied_outreach
+from .gmail import GmailClient
+from .google_sheets import validate_google_sheets
+from .models import Analytics, Campaign, Lead, LeadGenerationJob, Outreach, Setting
+from .runner import create_generation_job, get_job, get_job_snapshot, get_latest_job_snapshot, run_generation_job
+from .schemas import (
+    AnalyticsResponse,
+    CampaignCreate,
+    CampaignRead,
+    GenerateLeadRequest,
+    JobCreated,
+    LeadRead,
+    LeadUpdate,
+    OutreachRead,
+    SendEmailRequest,
+    SettingsPayload,
+)
+from .settings_store import effective_settings
+
+settings = get_settings()
+logger = logging.getLogger(__name__)
+app = FastAPI(title="LeadForge AI API", version="1.0.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[settings.frontend_origin, "http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+settings.screenshots_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static/screenshots", StaticFiles(directory=settings.screenshots_dir), name="screenshots")
+
+
+@app.on_event("startup")
+async def on_startup() -> None:
+    init_db()
+    try:
+        with SessionLocal() as db:
+            validate_google_sheets(effective_settings(settings, db))
+    except Exception:
+        logger.exception("Google Sheets startup validation failed")
+    app.state.reply_sync_task = asyncio.create_task(_reply_sync_loop())
+
+
+@app.on_event("shutdown")
+async def on_shutdown() -> None:
+    task = getattr(app.state, "reply_sync_task", None)
+    if task:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok", "app": settings.app_name}
+
+
+@app.get("/health/google")
+def google_health(db: Session = Depends(get_db)) -> dict[str, Any]:
+    return validate_google_sheets(effective_settings(settings, db))
+
+
+@app.post("/generate-leads", response_model=JobCreated)
+def generate_leads(payload: GenerateLeadRequest, background_tasks: BackgroundTasks) -> JobCreated:
+    job = create_generation_job(payload)
+    background_tasks.add_task(run_generation_job, job.id, payload)
+    return JobCreated(
+        job_id=job.id,
+        status=job.status,
+        events_url=f"/generate-leads/{job.id}/events",
+    )
+
+
+@app.get("/generate-leads/latest")
+def get_latest_generate_job() -> dict[str, Any] | None:
+    return get_latest_job_snapshot()
+
+
+@app.get("/generate-leads/{job_id}")
+def get_generate_job(job_id: str) -> dict[str, Any]:
+    snapshot = get_job_snapshot(job_id)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Generation job not found")
+    return snapshot
+
+
+@app.get("/generate-leads/{job_id}/events")
+async def stream_generate_job(job_id: str) -> StreamingResponse:
+    job = get_job(job_id)
+    if not job:
+        snapshot = get_job_snapshot(job_id)
+        if not snapshot:
+            raise HTTPException(status_code=404, detail="Generation job not found")
+
+        async def record_event_stream():
+            yield _sse(snapshot)
+
+        return StreamingResponse(record_event_stream(), media_type="text/event-stream")
+
+    async def event_stream():
+        yield _sse(job.snapshot())
+        while True:
+            try:
+                event = await asyncio.to_thread(job.events.get, True, 15)
+                yield _sse(event)
+                if event.get("status") in {"completed", "failed"}:
+                    break
+            except Exception:
+                yield ": heartbeat\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/get-leads", response_model=list[LeadRead])
+def get_leads(
+    db: Session = Depends(get_db),
+    search: str = "",
+    status: str = "",
+    outreach_status: str = "",
+    campaign_id: str = "",
+    scope: str = Query(default="latest", pattern="^(latest|all)$"),
+    country: str = "",
+    business_type: str = "",
+    contact: str = Query(default="", pattern="^(|email|phone|social)$"),
+    sort: str = "-created_at",
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+) -> list[Lead]:
+    query = select(Lead)
+    if scope == "latest" and not campaign_id:
+        latest_job = db.scalar(
+            select(LeadGenerationJob)
+            .where(LeadGenerationJob.campaign_id.is_not(None))
+            .order_by(desc(LeadGenerationJob.created_at))
+            .limit(1)
+        )
+        if latest_job and latest_job.campaign_id:
+            query = query.where(Lead.campaign_id == latest_job.campaign_id)
+        else:
+            return []
+    if search:
+        like = f"%{search}%"
+        query = query.where(
+            Lead.business_name.ilike(like)
+            | Lead.website.ilike(like)
+            | Lead.email.ilike(like)
+            | Lead.phone.ilike(like)
+            | Lead.city.ilike(like)
+            | Lead.business_type.ilike(like)
+        )
+    if status:
+        query = query.where(Lead.lead_status == status)
+    if outreach_status:
+        query = query.where(Lead.outreach_status == outreach_status)
+    if campaign_id:
+        query = query.where(Lead.campaign_id == campaign_id)
+    if country:
+        query = query.where(Lead.country == country)
+    if business_type:
+        query = query.where(Lead.business_type == business_type)
+    if contact == "email":
+        query = query.where(Lead.email != "")
+    elif contact == "phone":
+        query = query.where(Lead.phone != "")
+    elif contact == "social":
+        query = query.where(Lead.social_status == "found")
+
+    column_name = sort.removeprefix("-")
+    column = getattr(Lead, column_name, Lead.created_at)
+    query = query.order_by(desc(column) if sort.startswith("-") else asc(column))
+    return list(db.scalars(query.offset(offset).limit(limit)).all())
+
+
+@app.patch("/get-leads/{lead_id}", response_model=LeadRead)
+def update_lead(lead_id: str, payload: LeadUpdate, db: Session = Depends(get_db)) -> Lead:
+    lead = db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(lead, key, value)
+    db.add(lead)
+    db.add(Analytics(event_type="lead_updated", lead_id=lead.id, campaign_id=lead.campaign_id))
+    db.commit()
+    db.refresh(lead)
+    return lead
+
+
+@app.get("/get-leads/export.csv")
+def export_leads(
+    db: Session = Depends(get_db),
+    scope: str = Query(default="latest", pattern="^(latest|all)$"),
+) -> Response:
+    query = select(Lead).order_by(desc(Lead.created_at))
+    if scope == "latest":
+        latest_job = db.scalar(
+            select(LeadGenerationJob)
+            .where(LeadGenerationJob.campaign_id.is_not(None))
+            .order_by(desc(LeadGenerationJob.created_at))
+            .limit(1)
+        )
+        if latest_job and latest_job.campaign_id:
+            query = query.where(Lead.campaign_id == latest_job.campaign_id)
+        else:
+            return Response("", media_type="text/csv")
+    leads = db.scalars(query).all()
+    output = StringIO()
+    writer = csv.writer(output)
+    writer.writerow(
+        [
+            "Business Name",
+            "Website",
+            "Email",
+            "Phone",
+            "Country",
+            "City",
+            "Facebook",
+            "Instagram",
+            "LinkedIn",
+            "YouTube",
+            "X/Twitter",
+            "TikTok",
+        ]
+    )
+    for lead in leads:
+        writer.writerow(
+            [
+                lead.business_name,
+                lead.website,
+                lead.email,
+                lead.phone,
+                lead.country,
+                lead.city,
+                (lead.social_links or {}).get("facebook", ""),
+                (lead.social_links or {}).get("instagram", ""),
+                (lead.social_links or {}).get("linkedin", ""),
+                (lead.social_links or {}).get("youtube", ""),
+                (lead.social_links or {}).get("x_twitter", ""),
+                (lead.social_links or {}).get("tiktok", ""),
+            ]
+        )
+    return Response(
+        output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=leadforge-leads.csv"},
+    )
+
+
+@app.get("/get-campaigns", response_model=list[CampaignRead])
+def get_campaigns(db: Session = Depends(get_db)) -> list[Campaign]:
+    return list(db.scalars(select(Campaign).order_by(desc(Campaign.created_at))).all())
+
+
+@app.post("/get-campaigns", response_model=CampaignRead)
+def create_campaign(payload: CampaignCreate, db: Session = Depends(get_db)) -> Campaign:
+    campaign = Campaign(**payload.model_dump(), status="draft")
+    db.add(campaign)
+    db.commit()
+    db.refresh(campaign)
+    return campaign
+
+
+@app.get("/outreach", response_model=list[OutreachRead])
+def get_outreach(db: Session = Depends(get_db), lead_id: str = "", status: str = "") -> list[Outreach]:
+    query = select(Outreach).order_by(desc(Outreach.created_at))
+    if lead_id:
+        query = query.where(Outreach.lead_id == lead_id)
+    if status:
+        query = query.where(Outreach.status == status)
+    return list(db.scalars(query).all())
+
+
+@app.post("/outreach/{lead_id}/regenerate", response_model=OutreachRead)
+def regenerate_outreach(lead_id: str, db: Session = Depends(get_db)) -> Outreach:
+    lead = db.get(Lead, lead_id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    try:
+        effective = effective_settings(settings, db)
+        ai = GeminiLeadAI(effective.gemini_api_key, effective.gemini_model)
+        analysis = type(
+            "Analysis",
+            (),
+            {
+                "website_score": lead.website_score,
+                "opportunity_score": lead.opportunity_score,
+                "website_summary": lead.website_summary,
+                "website_problems": lead.website_problems,
+                "improvement_suggestions": lead.improvement_suggestions,
+            },
+        )()
+        from lead_automation.models import PlaceLead
+
+        place_lead = PlaceLead(
+            business_name=lead.business_name,
+            website=lead.website,
+            address=lead.location,
+            email=lead.email,
+            phone=lead.phone,
+        )
+        drafts = ai.generate_outreach(place_lead, lead.business_type, analysis)
+        outreach = db.scalar(select(Outreach).where(Outreach.lead_id == lead.id))
+        if not outreach:
+            outreach = Outreach(lead_id=lead.id, campaign_id=lead.campaign_id)
+        outreach.subject_line = drafts.subject_line
+        outreach.personalized_first_line = drafts.personalized_first_line
+        outreach.cold_email = drafts.cold_email
+        outreach.follow_up_1 = drafts.follow_up_1
+        outreach.follow_up_2 = drafts.follow_up_2
+        db.add(outreach)
+        db.commit()
+        db.refresh(outreach)
+        return outreach
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/send-email", response_model=OutreachRead)
+def send_email(payload: SendEmailRequest, db: Session = Depends(get_db)) -> Outreach:
+    outreach = db.scalar(
+        select(Outreach).options(joinedload(Outreach.lead), joinedload(Outreach.campaign)).where(
+            Outreach.id == payload.outreach_id
+        )
+    )
+    if not outreach:
+        raise HTTPException(status_code=404, detail="Outreach not found")
+    try:
+        effective = effective_settings(settings, db)
+        effective.require_gmail_credentials()
+        body = getattr(outreach, payload.version)
+        gmail = GmailClient(
+            effective.gmail_client_id,
+            effective.gmail_client_secret,
+            effective.gmail_refresh_token,
+            effective.gmail_sender_email,
+        )
+        tracking_url = f"{effective.public_backend_url.rstrip('/')}/email/open/{outreach.tracking_id}.png"
+        sent = gmail.send_email(outreach.lead.email, outreach.subject_line, body, tracking_url)
+        outreach.status = "sent"
+        outreach.selected_version = payload.version
+        outreach.gmail_message_id = sent.message_id
+        outreach.gmail_thread_id = sent.thread_id
+        outreach.sent_at = datetime.now(timezone.utc)
+        outreach.lead.outreach_status = "sent"
+        if outreach.campaign:
+            outreach.campaign.emails_sent += 1
+        db.add(Analytics(event_type="email_sent", lead_id=outreach.lead_id, campaign_id=outreach.campaign_id))
+        db.commit()
+        db.refresh(outreach)
+        return outreach
+    except Exception as exc:
+        outreach.status = "failed"
+        outreach.failed_reason = str(exc)
+        outreach.lead.outreach_status = "failed"
+        db.commit()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/send-email/sync-statuses")
+def sync_email_statuses(db: Session = Depends(get_db)) -> dict[str, int | bool]:
+    return sync_replied_outreach(db, settings).to_dict()
+
+
+@app.get("/email/open/{tracking_id}.png")
+def track_open(tracking_id: str, db: Session = Depends(get_db)) -> Response:
+    outreach = db.scalar(select(Outreach).options(joinedload(Outreach.lead)).where(Outreach.tracking_id == tracking_id))
+    if outreach and outreach.status in {"sent", "opened"}:
+        outreach.status = "opened"
+        outreach.opened_at = datetime.now(timezone.utc)
+        outreach.lead.outreach_status = "opened"
+        db.add(Analytics(event_type="email_opened", lead_id=outreach.lead_id, campaign_id=outreach.campaign_id))
+        db.commit()
+    pixel = base64_pixel()
+    return Response(pixel, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@app.get("/get-analytics", response_model=AnalyticsResponse)
+def get_analytics(db: Session = Depends(get_db)) -> AnalyticsResponse:
+    leads = db.scalars(select(Lead)).all()
+    outreach = db.scalars(select(Outreach)).all()
+    events = db.scalars(select(Analytics).order_by(desc(Analytics.created_at)).limit(50)).all()
+
+    emails_sent = sum(1 for item in outreach if item.sent_at or item.status in {"sent", "opened", "replied", "closed"})
+    replies = sum(1 for item in outreach if item.status == "replied" or item.replied_at)
+    opens = sum(1 for item in outreach if item.status in {"opened", "replied"} or item.opened_at)
+    open_rate = round((opens / emails_sent) * 100, 1) if emails_sent else 0.0
+    opportunities = sum(1 for lead in leads if lead.opportunity_score >= 70)
+    conversion_rate = round((replies / emails_sent) * 100, 1) if emails_sent else 0.0
+    latest_job = db.scalar(select(LeadGenerationJob).order_by(desc(LeadGenerationJob.created_at)).limit(1))
+    latest_leads = [lead for lead in leads if latest_job and lead.campaign_id == latest_job.campaign_id]
+    social_links_found = sum(len(lead.social_links or {}) for lead in latest_leads)
+
+    leads_by_day: defaultdict[str, int] = defaultdict(int)
+    emails_by_day: defaultdict[str, int] = defaultdict(int)
+    for lead in leads:
+        leads_by_day[lead.created_at.date().isoformat()] += 1
+    for item in outreach:
+        if item.sent_at:
+            emails_by_day[item.sent_at.date().isoformat()] += 1
+
+    top_cities = Counter(lead.city for lead in leads if lead.city).most_common(8)
+    top_niches = Counter(lead.business_type for lead in leads if lead.business_type).most_common(8)
+
+    return AnalyticsResponse(
+        leads_found=latest_job.lead_counter if latest_job else 0,
+        leads_saved=latest_job.success_counter if latest_job else 0,
+        emails_found=sum(1 for lead in latest_leads if lead.email),
+        social_links_found=social_links_found,
+        failed_leads=latest_job.failure_counter if latest_job else 0,
+        total_leads_generated=len(leads),
+        emails_sent=emails_sent,
+        replies_received=replies,
+        open_rate=open_rate,
+        website_opportunities_found=opportunities,
+        conversion_rate=conversion_rate,
+        lead_generation_per_day=[{"date": k, "leads": v} for k, v in sorted(leads_by_day.items())],
+        emails_per_day=[{"date": k, "emails": v} for k, v in sorted(emails_by_day.items())],
+        top_cities=[{"city": k, "count": v} for k, v in top_cities],
+        top_niches=[{"niche": k, "count": v} for k, v in top_niches],
+        recent_activity=[
+            {
+                "id": event.id,
+                "type": event.event_type,
+                "metadata": event.metadata_json,
+                "created_at": event.created_at.isoformat(),
+            }
+            for event in events
+        ],
+    )
+
+
+@app.get("/settings")
+def get_settings_rows(db: Session = Depends(get_db)) -> dict[str, Any]:
+    rows = db.scalars(select(Setting)).all()
+    payload = {row.key: ("********" if row.is_secret else row.value) for row in rows}
+    payload.update(
+        {
+            "default_lead_limit": settings.default_lead_limit,
+            "google_sheets_id_configured": bool(settings.google_sheets_spreadsheet_id),
+            "apify_configured": bool(settings.apify_api_token),
+            "gemini_configured": bool(settings.gemini_api_key),
+            "gmail_configured": bool(settings.gmail_refresh_token),
+        }
+    )
+    return payload
+
+
+@app.put("/settings")
+def update_settings(payload: SettingsPayload, db: Session = Depends(get_db)) -> dict[str, str]:
+    secret_map = {
+        "gemini_api_key": payload.gemini_api_key,
+        "apify_api_key": payload.apify_api_key,
+        "gmail_credentials": payload.gmail_credentials,
+    }
+    regular_map = {
+        "google_sheets_id": payload.google_sheets_id,
+        "default_lead_limit": payload.default_lead_limit,
+        "export_settings": payload.export_settings,
+    }
+    for key, value in secret_map.items():
+        if value is not None:
+            db.merge(Setting(key=key, value={"value": value}, is_secret=True))
+    for key, value in regular_map.items():
+        if value is not None:
+            db.merge(Setting(key=key, value={"value": value}, is_secret=False))
+    db.commit()
+    return {"status": "saved"}
+
+
+async def _reply_sync_loop() -> None:
+    await asyncio.sleep(5)
+    while True:
+        try:
+            with SessionLocal() as db:
+                sync_replied_outreach(db, settings, raise_on_missing_credentials=False)
+        except Exception:
+            logger.exception("Automatic Gmail reply sync failed")
+        await asyncio.sleep(max(15, settings.gmail_reply_sync_interval_seconds))
+
+
+def _sse(payload: dict[str, Any]) -> str:
+    return f"data: {json.dumps(payload)}\n\n"
+
+
+def base64_pixel() -> bytes:
+    import base64
+
+    return base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+    )

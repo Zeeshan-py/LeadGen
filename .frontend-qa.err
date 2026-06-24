@@ -1,0 +1,432 @@
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\server\app\page\app-build-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\server\\app\\page\\app-build-manifest.json'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.0jsoxbu2oppb'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.0jsoxbu2oppb'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\server\app\page\app-build-manifest.json'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\server\\app\\page\\app-build-manifest.json'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.jzjv0zar2gn'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.jzjv0zar2gn'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.wc3lxhv1ao'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.wc3lxhv1ao'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.vwfmzr9lj9c'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.vwfmzr9lj9c'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.gfkrxzxuaj5'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.gfkrxzxuaj5'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.vwfmzr9lj9c'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.vwfmzr9lj9c'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.x6290o932g'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.x6290o932g'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.5e5nc8c9gii'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.5e5nc8c9gii'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.uh876wh1up'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.uh876wh1up'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.12byqidrnjx'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.12byqidrnjx'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.68rd7jl5kav'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.68rd7jl5kav'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.12byqidrnjx'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.12byqidrnjx'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.6n20hrqxz8'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.6n20hrqxz8'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.jyxanh576oa'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.jyxanh576oa'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.8q9fowd28p9'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.8q9fowd28p9'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.u2ahg427nh'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.u2ahg427nh'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.0imksl3nv5p'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.0imksl3nv5p'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.u2ahg427nh'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.u2ahg427nh'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.lfhsk3ufhx'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.lfhsk3ufhx'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.0xpm0xqkog8j'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.0xpm0xqkog8j'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.ag3x16z55n'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.ag3x16z55n'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.x263f0yoee'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.x263f0yoee'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.ag3x16z55n'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.ag3x16z55n'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.spjxi1o031'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.spjxi1o031'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.rwv05bjwugh'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.rwv05bjwugh'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.m8fgtc2i0xf'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.m8fgtc2i0xf'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.d8hln4z7vbb'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.d8hln4z7vbb'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.m8fgtc2i0xf'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.m8fgtc2i0xf'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.jgaoir99ud'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.jgaoir99ud'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.7sk4n5grzuw'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.7sk4n5grzuw'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.ho9x8p8ink8'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.ho9x8p8ink8'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.osxgmrjgz5h'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.osxgmrjgz5h'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.ho9x8p8ink8'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.ho9x8p8ink8'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.b07vh1w5hir'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.b07vh1w5hir'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.5ls96qfq89v'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.5ls96qfq89v'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.tcxeinvdjw'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.tcxeinvdjw'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.x5osnmvycx9'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.x5osnmvycx9'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.tcxeinvdjw'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.tcxeinvdjw'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.wu6sz47htx'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.wu6sz47htx'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.m1g8vm4ywu'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.m1g8vm4ywu'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.cszg3aeakq6'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.cszg3aeakq6'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.njkzn5vl8mc'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.njkzn5vl8mc'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.cszg3aeakq6'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.cszg3aeakq6'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.grq8w7czax4'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.grq8w7czax4'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.u3bx3r6taa'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.u3bx3r6taa'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.x7eguifz61'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.x7eguifz61'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.mjl6wrrkgzj'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.mjl6wrrkgzj'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.eyahglgdim'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.eyahglgdim'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.mjl6wrrkgzj'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.mjl6wrrkgzj'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.zjfbv6yf6he'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.zjfbv6yf6he'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.xg7ax34juyi'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.xg7ax34juyi'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.n6zw8to15r'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.n6zw8to15r'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.hlro5bkyme'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.hlro5bkyme'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.jufz71e5fb'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.jufz71e5fb'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.hlro5bkyme'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.hlro5bkyme'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.s7127yckbk'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.s7127yckbk'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.cn6ixs85cvv'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.cn6ixs85cvv'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.hfo54b188i'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.hfo54b188i'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.pw3ixwnn90p'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.pw3ixwnn90p'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.jv3975340q'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.jv3975340q'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.pw3ixwnn90p'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.pw3ixwnn90p'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.1l23ibqjrzh'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.1l23ibqjrzh'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.urmqfvbzzhd'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.urmqfvbzzhd'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.47uck0xfzrs'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.47uck0xfzrs'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.tiuzvz6agxc'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.tiuzvz6agxc'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.6e914cor8k'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.6e914cor8k'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.tiuzvz6agxc'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.tiuzvz6agxc'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.ir678rlfjff'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.ir678rlfjff'
+}
+[Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.nfac8kzu6pk'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.nfac8kzu6pk'
+}
+ ⨯ [Error: ENOENT: no such file or directory, open 'D:\Work\Lead generation\frontend\.next\static\development\_buildManifest.js.tmp.m9j8iej2vs'] {
+  errno: -4058,
+  code: 'ENOENT',
+  syscall: 'open',
+  path: 'D:\\Work\\Lead generation\\frontend\\.next\\static\\development\\_buildManifest.js.tmp.m9j8iej2vs'
+}
