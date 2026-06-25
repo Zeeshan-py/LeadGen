@@ -8,6 +8,7 @@ import urllib.request
 from typing import Any
 
 from .models import PlaceLead
+from .social_links import SOCIAL_NETWORKS, social_network_for_url
 
 APIFY_BASE = "https://api.apify.com/v2"
 
@@ -46,7 +47,7 @@ class ApifyMapsClient:
             "searchMatching": "all",
             "maxReviews": 0,
             "maxImages": 0,
-            "scrapeContacts": False,
+            "scrapeContacts": True,
             "scrapePlaceDetailPage": False,
             "maximumLeadsEnrichmentRecords": 0,
         }
@@ -110,6 +111,7 @@ class ApifyMapsClient:
         phone = get("phone", "phoneUnformatted", default="")
         emails = _extract_values(item, ("emails", "email", "contactEmails", "emailsUncertain"))
         phones = _extract_values(item, ("phones", "phoneNumbers", "contactPhones"))
+        social_links = _extract_social_links(item)
         maps_url = get("url", "googleMapsUrl", "placeUrl", default="")
         place_id = get("placeId", "id", default="")
         rating = get("totalScore", "rating", default=None)
@@ -138,6 +140,8 @@ class ApifyMapsClient:
             lead_segment=segment,
             raw_emails=emails,
             raw_phones=phones,
+            social_links=social_links,
+            social_status="found" if social_links else "missing",
         )
 
 
@@ -165,3 +169,52 @@ def _extract_values(item: dict[str, Any], keys: tuple[str, ...]) -> list[str]:
                     if value:
                         values.append(str(value))
     return list(dict.fromkeys(v.strip() for v in values if v and str(v).strip()))
+
+
+def _extract_social_links(item: dict[str, Any]) -> dict[str, str]:
+    candidates: list[str] = []
+    for key in (
+        "socialLinks",
+        "socialMedia",
+        "socials",
+        "facebook",
+        "facebookUrl",
+        "instagram",
+        "instagramUrl",
+        "linkedin",
+        "linkedinUrl",
+        "twitter",
+        "twitterUrl",
+        "x",
+        "xUrl",
+        "youtube",
+        "youtubeUrl",
+        "tiktok",
+        "tiktokUrl",
+    ):
+        candidates.extend(_flatten_candidate_values(item.get(key)))
+
+    result: dict[str, str] = {}
+    for value in candidates:
+        network = social_network_for_url(value)
+        if network in SOCIAL_NETWORKS and network not in result:
+            result[network] = value
+    return result
+
+
+def _flatten_candidate_values(value: Any) -> list[str]:
+    if not value:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        values: list[str] = []
+        for nested in value.values():
+            values.extend(_flatten_candidate_values(nested))
+        return values
+    if isinstance(value, list):
+        values: list[str] = []
+        for nested in value:
+            values.extend(_flatten_candidate_values(nested))
+        return values
+    return []

@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { Download, Edit3, ExternalLink, MoreHorizontal, Search } from "lucide-react";
+import { Download, Edit3, ExternalLink, Link2, MoreHorizontal, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/status-badge";
@@ -275,7 +275,9 @@ export default function LeadsPage() {
                 <TableCell>{lead.email || <span className="text-muted-foreground">Missing</span>}</TableCell>
                 <TableCell>{lead.phone || <span className="text-muted-foreground">Missing</span>}</TableCell>
                 <TableCell className="max-w-[260px] truncate">{lead.location}</TableCell>
-                <TableCell>{Object.keys(lead.social_links ?? {}).length || "—"}</TableCell>
+                <TableCell className="min-w-[210px]">
+                  <SocialLinksCell lead={lead} />
+                </TableCell>
                 <TableCell>{lead.website_score}</TableCell>
                 <TableCell>{lead.opportunity_score}</TableCell>
                 <TableCell>
@@ -389,4 +391,34 @@ export default function LeadsPage() {
       </Dialog>
     </div>
   );
+}
+
+function SocialLinksCell({ lead }: { lead: Lead }) {
+  const links = socialPlatforms
+    .map((platform) => ({ ...platform, url: lead.social_links?.[platform.key] }))
+    .filter((platform) => Boolean(platform.url));
+
+  if (!links.length) {
+    return <span className="text-muted-foreground">Missing</span>;
+  }
+
+  return (
+    <div className="flex max-w-[260px] flex-wrap gap-1.5">
+      {links.map((platform) => (
+        <Button key={platform.key} asChild size="sm" variant="outline" className="h-7 px-2 text-xs">
+          <a href={platform.url} target="_blank" rel="noreferrer" aria-label={`Open ${platform.label} for ${lead.business_name}`}>
+            <Link2 data-icon="inline-start" className="size-3.5" />
+            {shortSocialLabel(platform.key)}
+          </a>
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function shortSocialLabel(key: (typeof socialPlatforms)[number]["key"]) {
+  if (key === "x_twitter") {
+    return "X";
+  }
+  return socialPlatforms.find((platform) => platform.key === key)?.label ?? key;
 }

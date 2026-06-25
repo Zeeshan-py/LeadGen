@@ -420,8 +420,8 @@ def _process_one_lead(
     job.emit(stage="Finding Emails", progress=min(91, base_progress + 4))
     job.emit(stage="Finding Phone Numbers", progress=min(92, base_progress + 5))
     lead.raw_phones = merge_unique(lead.raw_phones, list(crawl.get("phones", [])))
-    social_candidates = crawl.get("social_links", {})
-    if isinstance(social_candidates, dict) and social_candidates:
+    social_candidates = _merge_social_sources(lead.social_links, crawl.get("social_links", {}))
+    if social_candidates:
         lead.social_links = _normalize_social_links(social_candidates, ai)
     else:
         lead.social_links = {}
@@ -574,6 +574,28 @@ def _normalize_social_links(
                 result[network] = value
                 break
     return result
+
+
+def _merge_social_sources(
+    existing: dict[str, str] | None,
+    scraped: Any,
+) -> dict[str, list[str]]:
+    merged: dict[str, list[str]] = {}
+    if existing:
+        for network, link in existing.items():
+            if network in SOCIAL_NETWORKS and link:
+                merged.setdefault(network, []).append(link)
+    if isinstance(scraped, dict):
+        for network, links in scraped.items():
+            if network not in SOCIAL_NETWORKS:
+                continue
+            values = links if isinstance(links, list) else [links]
+            bucket = merged.setdefault(network, [])
+            for link in values:
+                value = str(link).strip()
+                if value and value not in bucket:
+                    bucket.append(value)
+    return merged
 
 
 def _analyze_with_fallback(
