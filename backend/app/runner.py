@@ -462,7 +462,10 @@ def _process_one_lead(
         if lead.enrichment_status == "website_crawled":
             lead.enrichment_status = "ai_enriched"
 
-    if not _has_reachable_contact(lead):
+    if payload.website_mode == "withoutWebsite":
+        if not _has_direct_contact(lead):
+            raise LeadSkippedNoContact("No public email or social profile was found")
+    elif not _has_reachable_contact(lead):
         raise LeadSkippedNoContact("No email, social profile, or phone number was found")
 
     job.emit(stage="Analyzing Websites", progress=min(93, base_progress + 6))
@@ -655,6 +658,10 @@ def _has_reachable_contact(lead: PlaceLead) -> bool:
     return bool(lead.primary_email() or lead.social_links or lead.primary_phone())
 
 
+def _has_direct_contact(lead: PlaceLead) -> bool:
+    return bool(lead.primary_email() or lead.social_links)
+
+
 def _discover_missing_contact_data(
     lead: PlaceLead,
     payload: GenerateLeadRequest,
@@ -666,7 +673,9 @@ def _discover_missing_contact_data(
         timeout_seconds=min(settings.fetch_timeout_seconds, 12),
         max_results=settings.contact_discovery_results,
     )
-    location = ", ".join(part for part in (lead.address, payload.country) if part)
+    location = ", ".join(part for part in (lead.city, lead.state, payload.country) if part)
+    if not location:
+        location = ", ".join(part for part in (lead.address, payload.country) if part)
     result = discovery.search_business(lead.business_name, location, payload.business_type)
     if not (result.emails or result.social_links or result.website_candidates):
         return {}

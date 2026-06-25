@@ -18,6 +18,13 @@ except ImportError:
 
 
 SEARCH_URL = "https://duckduckgo.com/html/"
+SOCIAL_SEARCH_TERMS = (
+    "facebook",
+    "instagram",
+    "linkedin",
+    "x twitter",
+    "tiktok",
+)
 BLOCKED_WEBSITE_HOSTS = (
     "facebook.com",
     "instagram.com",
@@ -63,20 +70,30 @@ class ContactDiscovery:
         self._ssl_ctx.verify_mode = ssl.CERT_NONE
 
     def search_business(self, business_name: str, location: str, business_type: str = "") -> ContactDiscoveryResult:
-        query = " ".join(
-            part
-            for part in (
-                f'"{business_name}"',
-                location,
-                business_type,
-                "email OR contact OR facebook OR instagram OR linkedin",
+        result = ContactDiscoveryResult()
+        queries = [
+            " ".join(
+                part
+                for part in (
+                    f'"{business_name}"',
+                    location,
+                    business_type,
+                    "email contact facebook instagram linkedin",
+                )
+                if part
             )
-            if part
+        ]
+        queries.extend(
+            " ".join(part for part in (f'"{business_name}"', location, term) if part)
+            for term in SOCIAL_SEARCH_TERMS
         )
-        html = self._fetch_search(query)
-        if not html:
-            return ContactDiscoveryResult()
-        return self.parse_search_html(html)
+        for query in queries:
+            html = self._fetch_search(query)
+            if html:
+                _merge_result(result, self.parse_search_html(html))
+            if _has_enough_contact(result, self.max_results):
+                break
+        return result
 
     def parse_search_html(self, html: str) -> ContactDiscoveryResult:
         result = ContactDiscoveryResult()
@@ -160,3 +177,24 @@ def _looks_like_business_website(url: str) -> bool:
     except ValueError:
         return False
     return bool(host) and not any(host == blocked or blocked in host for blocked in BLOCKED_WEBSITE_HOSTS)
+
+
+def _merge_result(target: ContactDiscoveryResult, source: ContactDiscoveryResult) -> None:
+    target.emails = _merge_unique(target.emails, source.emails)
+    target.website_candidates = _merge_unique(target.website_candidates, source.website_candidates)
+    target.source_urls = _merge_unique(target.source_urls, source.source_urls)
+    for network, links in source.social_links.items():
+        target.social_links[network] = _merge_unique(target.social_links.get(network, []), links)
+
+
+def _merge_unique(existing: list[str], new: list[str]) -> list[str]:
+    result = list(existing)
+    for value in new:
+        if value and value not in result:
+            result.append(value)
+    return result
+
+
+def _has_enough_contact(result: ContactDiscoveryResult, max_results: int) -> bool:
+    social_count = sum(len(links) for links in result.social_links.values())
+    return bool(result.emails and social_count) or social_count >= 2 or len(result.source_urls) >= max_results
