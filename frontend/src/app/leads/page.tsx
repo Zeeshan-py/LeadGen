@@ -53,7 +53,6 @@ export default function LeadsPage() {
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [scope, setScope] = useState("latest");
-  const [status, setStatus] = useState("all");
   const [outreachStatus, setOutreachStatus] = useState("all");
   const [country, setCountry] = useState("all");
   const [businessType, setBusinessType] = useState("all");
@@ -65,13 +64,12 @@ export default function LeadsPage() {
   useEffect(() => {
     const params: Record<string, string> = { sort, scope };
     if (deferredSearch) params.search = deferredSearch;
-    if (status !== "all") params.status = status;
     if (outreachStatus !== "all") params.outreach_status = outreachStatus;
     if (country !== "all") params.country = country;
     if (businessType !== "all") params.business_type = businessType;
     if (contact !== "all") params.contact = contact;
     getLeads(params).then(setLeads).catch((error) => toast.error(error.message));
-  }, [deferredSearch, status, outreachStatus, sort, scope, country, businessType, contact]);
+  }, [deferredSearch, outreachStatus, sort, scope, country, businessType, contact]);
 
   const selectedLeads = useMemo(() => leads.filter((lead) => selected.has(lead.id)), [leads, selected]);
 
@@ -119,22 +117,6 @@ export default function LeadsPage() {
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search leads, websites, emails, cities..." className="pl-9" />
             </div>
-            <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger>
-                <SelectValue placeholder="Lead status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectGroup>
-                  <SelectItem value="all">All Statuses</SelectItem>
-                  <SelectItem value="qualified">Qualified</SelectItem>
-                  <SelectItem value="contacted">Contacted</SelectItem>
-                  <SelectItem value="replied">Replied</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
-                  <SelectItem value="won">Won</SelectItem>
-                  <SelectItem value="lost">Lost</SelectItem>
-                </SelectGroup>
-              </SelectContent>
-            </Select>
             <Select value={country} onValueChange={setCountry}>
               <SelectTrigger><SelectValue placeholder="Country" /></SelectTrigger>
               <SelectContent>
@@ -191,8 +173,6 @@ export default function LeadsPage() {
               <SelectContent>
                 <SelectGroup>
                   <SelectItem value="-created_at">Newest</SelectItem>
-                  <SelectItem value="-opportunity_score">Opportunity</SelectItem>
-                  <SelectItem value="-website_score">Website Score</SelectItem>
                   <SelectItem value="business_name">Business Name</SelectItem>
                 </SelectGroup>
               </SelectContent>
@@ -238,9 +218,6 @@ export default function LeadsPage() {
               <TableHead>Phone</TableHead>
               <TableHead>Location</TableHead>
               <TableHead>Socials</TableHead>
-              <TableHead>Website Score</TableHead>
-              <TableHead>Opportunity</TableHead>
-              <TableHead>Lead Status</TableHead>
               <TableHead>Outreach</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -277,11 +254,6 @@ export default function LeadsPage() {
                 <TableCell className="max-w-[260px] truncate">{lead.location}</TableCell>
                 <TableCell className="min-w-[210px]">
                   <SocialLinksCell lead={lead} />
-                </TableCell>
-                <TableCell>{lead.website_score}</TableCell>
-                <TableCell>{lead.opportunity_score}</TableCell>
-                <TableCell>
-                  <StatusBadge value={lead.lead_status} />
                 </TableCell>
                 <TableCell>
                   <StatusBadge value={lead.outreach_status} />

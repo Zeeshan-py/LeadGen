@@ -111,7 +111,7 @@ class ApifyMapsClient:
         phone = get("phone", "phoneUnformatted", default="")
         emails = _extract_values(item, ("emails", "email", "contactEmails", "emailsUncertain"))
         phones = _extract_values(item, ("phones", "phoneNumbers", "contactPhones"))
-        social_links = _extract_social_links(item)
+        social_links = _extract_social_links(item, website)
         maps_url = get("url", "googleMapsUrl", "placeUrl", default="")
         place_id = get("placeId", "id", default="")
         rating = get("totalScore", "rating", default=None)
@@ -171,8 +171,8 @@ def _extract_values(item: dict[str, Any], keys: tuple[str, ...]) -> list[str]:
     return list(dict.fromkeys(v.strip() for v in values if v and str(v).strip()))
 
 
-def _extract_social_links(item: dict[str, Any]) -> dict[str, str]:
-    candidates: list[str] = []
+def _extract_social_links(item: dict[str, Any], website: str = "") -> dict[str, str]:
+    candidates: list[str] = [website]
     for key in (
         "socialLinks",
         "socialMedia",

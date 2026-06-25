@@ -404,13 +404,15 @@ def _process_one_lead(
 
     job.emit(stage="Scraping Websites", progress=min(90, base_progress + 2), lead_counter=job.lead_counter)
     crawl = {"text": "", "emails": [], "phones": [], "social_links": {}, "social_pages": [], "pages_scraped": 0}
+    social_from_url = _social_candidates_from_url(lead.website)
     if lead.website:
         supplied_website = lead.website
         lead.website = normalize_website(lead.website)
+        social_from_url = _merge_social_sources(social_from_url, _social_candidates_from_url(lead.website))
         if not lead.website:
             raise ValueError(f"Invalid website URL: {supplied_website}")
         crawl = scraper.crawl(lead.website)
-        if not crawl.get("website_valid", True):
+        if not crawl.get("website_valid", True) and not social_from_url:
             raise ValueError("Website could not be reached or validated")
         lead.website_text = str(crawl.get("text", ""))
         lead.pages_scraped = int(crawl.get("pages_scraped", 0))
@@ -420,7 +422,8 @@ def _process_one_lead(
     job.emit(stage="Finding Emails", progress=min(91, base_progress + 4))
     job.emit(stage="Finding Phone Numbers", progress=min(92, base_progress + 5))
     lead.raw_phones = merge_unique(lead.raw_phones, list(crawl.get("phones", [])))
-    social_candidates = _merge_social_sources(lead.social_links, crawl.get("social_links", {}))
+    social_candidates = _merge_social_sources(lead.social_links, social_from_url)
+    _extend_social_candidates(social_candidates, crawl.get("social_links", {}))
     if social_candidates:
         lead.social_links = _normalize_social_links(social_candidates, ai)
     else:
@@ -596,6 +599,27 @@ def _merge_social_sources(
                 if value and value not in bucket:
                     bucket.append(value)
     return merged
+
+
+def _extend_social_candidates(target: dict[str, list[str]], source: Any) -> None:
+    if not isinstance(source, dict):
+        return
+    for network, links in source.items():
+        if network not in SOCIAL_NETWORKS:
+            continue
+        values = links if isinstance(links, list) else [links]
+        bucket = target.setdefault(network, [])
+        for link in values:
+            value = str(link).strip()
+            if value and value not in bucket:
+                bucket.append(value)
+
+
+def _social_candidates_from_url(url: str) -> dict[str, list[str]]:
+    network = social_network_for_url(url)
+    if not network:
+        return {}
+    return {network: [url]}
 
 
 def _analyze_with_fallback(
