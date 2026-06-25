@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from lead_automation.ai_extractor import LeadExtractor
 from lead_automation.apify_maps import ApifyMapsClient
 from lead_automation.apify_web import ApifyWebCrawler
+from lead_automation.contact_discovery import ContactDiscovery
 from lead_automation.main import qualifies_google_business
 from lead_automation.models import PlaceLead, merge_unique
 from lead_automation.sheets import SheetsLeadStore
@@ -424,6 +425,18 @@ def _process_one_lead(
     lead.raw_phones = merge_unique(lead.raw_phones, list(crawl.get("phones", [])))
     social_candidates = _merge_social_sources(lead.social_links, social_from_url)
     _extend_social_candidates(social_candidates, crawl.get("social_links", {}))
+
+    if settings.enable_contact_discovery and (not lead.primary_email() or not social_candidates):
+        discovery_crawl = _discover_missing_contact_data(
+            lead=lead,
+            payload=payload,
+            scraper=scraper,
+            social_candidates=social_candidates,
+            settings=settings,
+        )
+        if discovery_crawl:
+            crawl = _merge_crawl_results(crawl, discovery_crawl)
+
     if social_candidates:
         lead.social_links = _normalize_social_links(social_candidates, ai)
     else:
@@ -620,6 +633,64 @@ def _social_candidates_from_url(url: str) -> dict[str, list[str]]:
     if not network:
         return {}
     return {network: [url]}
+
+
+def _discover_missing_contact_data(
+    lead: PlaceLead,
+    payload: GenerateLeadRequest,
+    scraper: WebsiteScraper,
+    social_candidates: dict[str, list[str]],
+    settings: Settings,
+) -> dict[str, Any]:
+    discovery = ContactDiscovery(
+        timeout_seconds=min(settings.fetch_timeout_seconds, 12),
+        max_results=settings.contact_discovery_results,
+    )
+    location = ", ".join(part for part in (lead.address, payload.country) if part)
+    result = discovery.search_business(lead.business_name, location, payload.business_type)
+    if not (result.emails or result.social_links or result.website_candidates):
+        return {}
+
+    lead.raw_emails = merge_unique(lead.raw_emails, result.emails)
+    _extend_social_candidates(social_candidates, result.social_links)
+    lead.source_notes = merge_unique(
+        lead.source_notes,
+        [f"Contact discovery checked {url}" for url in result.source_urls[:3]],
+    )
+
+    for candidate in result.website_candidates[:2]:
+        if lead.website and candidate == lead.website:
+            continue
+        candidate_crawl = scraper.crawl(candidate)
+        if not candidate_crawl.get("website_valid", True):
+            continue
+        lead.raw_emails = merge_unique(lead.raw_emails, list(candidate_crawl.get("emails", [])))
+        lead.raw_phones = merge_unique(lead.raw_phones, list(candidate_crawl.get("phones", [])))
+        _extend_social_candidates(social_candidates, candidate_crawl.get("social_links", {}))
+        if not lead.website:
+            lead.website = candidate
+        if not lead.website_text:
+            lead.website_text = str(candidate_crawl.get("text", ""))
+        lead.pages_scraped += int(candidate_crawl.get("pages_scraped", 0))
+        if lead.enrichment_status == "google_only":
+            lead.enrichment_status = "contact_discovered"
+        return candidate_crawl
+
+    if lead.enrichment_status == "google_only":
+        lead.enrichment_status = "contact_discovered"
+    return {}
+
+
+def _merge_crawl_results(primary: dict[str, Any], extra: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(primary)
+    merged["text"] = "\n\n".join(filter(None, [str(primary.get("text", "")), str(extra.get("text", ""))]))[:40_000]
+    merged["emails"] = merge_unique(list(primary.get("emails", [])), list(extra.get("emails", [])))
+    merged["phones"] = merge_unique(list(primary.get("phones", [])), list(extra.get("phones", [])))
+    merged["pages_scraped"] = int(primary.get("pages_scraped", 0)) + int(extra.get("pages_scraped", 0))
+    merged["social_pages"] = merge_unique(list(primary.get("social_pages", [])), list(extra.get("social_pages", [])))
+    merged["social_links"] = _merge_social_sources(primary.get("social_links", {}), extra.get("social_links", {}))
+    merged["website_valid"] = bool(primary.get("website_valid", True) or extra.get("website_valid", True))
+    return merged
 
 
 def _analyze_with_fallback(

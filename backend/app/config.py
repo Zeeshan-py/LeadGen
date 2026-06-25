@@ -56,6 +56,8 @@ class Settings(BaseSettings):
 
     fetch_timeout_seconds: int = Field(default=20, validation_alias="LEAD_FETCH_TIMEOUT_SECONDS")
     max_website_pages: int = Field(default=5, validation_alias="LEAD_MAX_WEBSITE_PAGES")
+    enable_contact_discovery: bool = Field(default=True, validation_alias="ENABLE_CONTACT_DISCOVERY")
+    contact_discovery_results: int = Field(default=8, validation_alias="CONTACT_DISCOVERY_RESULTS")
     default_lead_limit: int = Field(default=50, validation_alias="DEFAULT_LEAD_LIMIT")
     enable_screenshot_capture: bool = Field(default=True, validation_alias="ENABLE_SCREENSHOT_CAPTURE")
     screenshots_dir: Path = Field(default=Path("./storage/screenshots"), validation_alias="SCREENSHOTS_DIR")

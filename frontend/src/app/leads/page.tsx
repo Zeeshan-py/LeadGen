@@ -249,8 +249,24 @@ export default function LeadsPage() {
                     <span className="text-muted-foreground">No website</span>
                   )}
                 </TableCell>
-                <TableCell>{lead.email || <span className="text-muted-foreground">Missing</span>}</TableCell>
-                <TableCell>{lead.phone || <span className="text-muted-foreground">Missing</span>}</TableCell>
+                <TableCell>
+                  {lead.email ? (
+                    <a className="text-primary hover:underline" href={`mailto:${lead.email}`}>
+                      {lead.email}
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">Missing</span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {lead.phone ? (
+                    <a className="text-primary hover:underline" href={`tel:${lead.phone}`}>
+                      {lead.phone}
+                    </a>
+                  ) : (
+                    <span className="text-muted-foreground">Missing</span>
+                  )}
+                </TableCell>
                 <TableCell className="max-w-[260px] truncate">{lead.location}</TableCell>
                 <TableCell className="min-w-[210px]">
                   <SocialLinksCell lead={lead} />
