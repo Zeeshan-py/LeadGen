@@ -462,8 +462,8 @@ def _process_one_lead(
         if lead.enrichment_status == "website_crawled":
             lead.enrichment_status = "ai_enriched"
 
-    if not _has_direct_contact(lead):
-        raise LeadSkippedNoContact("No public email or social profile was found")
+    if not _has_reachable_contact(lead):
+        raise LeadSkippedNoContact("No email, social profile, or phone number was found")
 
     job.emit(stage="Analyzing Websites", progress=min(93, base_progress + 6))
     analysis = _analyze_with_fallback(ai, lead, payload.business_type, crawl)
@@ -651,8 +651,8 @@ def _social_candidates_from_url(url: str) -> dict[str, list[str]]:
     return {network: [url]}
 
 
-def _has_direct_contact(lead: PlaceLead) -> bool:
-    return bool(lead.primary_email() or lead.social_links)
+def _has_reachable_contact(lead: PlaceLead) -> bool:
+    return bool(lead.primary_email() or lead.social_links or lead.primary_phone())
 
 
 def _discover_missing_contact_data(
