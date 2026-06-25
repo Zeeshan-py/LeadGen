@@ -6,6 +6,13 @@ from urllib.parse import urlsplit, urlunsplit
 EMAIL_RE = re.compile(r"^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$", re.I)
 PHONE_RE = re.compile(r"\d")
 BLOCKED_EMAIL_PREFIXES = ("noreply@", "no-reply@", "example@", "test@")
+BLOCKED_EMAIL_DOMAINS = {
+    "duckduckgo.com",
+    "google.com",
+    "bing.com",
+    "yahoo.com",
+    "example.com",
+}
 
 
 def normalize_website(value: str) -> str:
@@ -28,10 +35,12 @@ def normalize_website(value: str) -> str:
 
 def normalize_email(value: str) -> str:
     candidate = value.strip().lower().strip("<>()[]{}.,;:")
+    domain = candidate.rsplit("@", 1)[-1] if "@" in candidate else ""
     if (
         not candidate
         or len(candidate) > 254
         or candidate.startswith(BLOCKED_EMAIL_PREFIXES)
+        or domain in BLOCKED_EMAIL_DOMAINS
         or not EMAIL_RE.fullmatch(candidate)
     ):
         return ""

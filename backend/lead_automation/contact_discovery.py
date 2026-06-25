@@ -5,10 +5,9 @@ import ssl
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Any
 
 from .social_links import SOCIAL_NETWORKS, social_network_for_url
-from .validation import normalize_email, normalize_website
+from .validation import normalize_website
 
 try:
     from bs4 import BeautifulSoup
@@ -18,7 +17,6 @@ except ImportError:
     HAS_BS4 = False
 
 
-EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 SEARCH_URL = "https://duckduckgo.com/html/"
 BLOCKED_WEBSITE_HOSTS = (
     "facebook.com",
@@ -44,6 +42,7 @@ BLOCKED_WEBSITE_HOSTS = (
     "foursquare.",
     "wikipedia.",
     "wixsite.com",
+    "duckduckgo.com",
 )
 
 
@@ -81,7 +80,6 @@ class ContactDiscovery:
 
     def parse_search_html(self, html: str) -> ContactDiscoveryResult:
         result = ContactDiscoveryResult()
-        result.emails = _unique(normalize_email(match) for match in EMAIL_RE.findall(html))
 
         for url in _extract_result_urls(html):
             if len(result.source_urls) >= self.max_results:
@@ -162,11 +160,3 @@ def _looks_like_business_website(url: str) -> bool:
     except ValueError:
         return False
     return bool(host) and not any(host == blocked or blocked in host for blocked in BLOCKED_WEBSITE_HOSTS)
-
-
-def _unique(values: Any) -> list[str]:
-    result: list[str] = []
-    for value in values:
-        if value and value not in result:
-            result.append(value)
-    return result

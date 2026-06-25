@@ -49,6 +49,10 @@ PIPELINE = [
 logger = logging.getLogger(__name__)
 
 
+class LeadSkippedNoContact(RuntimeError):
+    pass
+
+
 class OptionalSheetsStore:
     def __init__(self, store: SheetsLeadStore | None = None) -> None:
         self.store = store
@@ -202,6 +206,15 @@ def run_generation_job(job_id: str, payload: GenerateLeadRequest) -> None:
                     )
                     existing_keys.add(lead.dedupe_key())
                     job.success_counter += 1
+                except LeadSkippedNoContact as exc:
+                    _record_event(
+                        db,
+                        "lead_skipped_no_contact",
+                        campaign_id=campaign.id,
+                        metadata={"business_name": lead.business_name, "reason": str(exc)},
+                    )
+                    db.commit()
+                    job.emit(stage="Saving Leads", progress=min(92, base_progress + 8), error="")
                 except Exception as exc:
                     job.failure_counter += 1
                     _record_event(
@@ -449,6 +462,9 @@ def _process_one_lead(
         if lead.enrichment_status == "website_crawled":
             lead.enrichment_status = "ai_enriched"
 
+    if not _has_direct_contact(lead):
+        raise LeadSkippedNoContact("No public email or social profile was found")
+
     job.emit(stage="Analyzing Websites", progress=min(93, base_progress + 6))
     analysis = _analyze_with_fallback(ai, lead, payload.business_type, crawl)
 
@@ -633,6 +649,10 @@ def _social_candidates_from_url(url: str) -> dict[str, list[str]]:
     if not network:
         return {}
     return {network: [url]}
+
+
+def _has_direct_contact(lead: PlaceLead) -> bool:
+    return bool(lead.primary_email() or lead.social_links)
 
 
 def _discover_missing_contact_data(
