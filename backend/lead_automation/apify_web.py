@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 import urllib.request
 from typing import Any
 
 APIFY_BASE = "https://api.apify.com/v2"
+logger = logging.getLogger(__name__)
 
 
 class ApifyWebCrawler:
@@ -26,22 +28,29 @@ class ApifyWebCrawler:
             "maxCrawlDepth": 1,
             "crawlerType": "playwright:firefox",
             "saveMarkdown": True,
-            "saveHtml": False,
+            "saveHtml": True,
             "removeCookieWarnings": True,
         }
         try:
             items = self._run_actor(run_input)
-        except Exception:
+        except Exception as exc:
+            logger.warning("Apify rendered crawl failed for %s: %s", url, exc)
             return {"text": "", "pages_scraped": 0}
 
         texts: list[str] = []
+        html_pages: list[dict[str, str]] = []
         for item in items:
             md = item.get("markdown") or item.get("text") or ""
             if md:
                 texts.append(str(md))
+            html = item.get("html") or ""
+            page_url = item.get("url") or item.get("loadedUrl") or url
+            if html:
+                html_pages.append({"url": str(page_url), "html": str(html)})
         return {
             "text": "\n\n".join(texts)[:40_000],
             "pages_scraped": len(texts),
+            "html_pages": html_pages,
         }
 
     def _run_actor(self, run_input: dict[str, Any]) -> list[dict[str, Any]]:

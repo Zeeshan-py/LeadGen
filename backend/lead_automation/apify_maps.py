@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-import sys
+import logging
 import time
 import urllib.error
 import urllib.request
@@ -11,6 +11,12 @@ from .models import PlaceLead
 from .social_links import SOCIAL_NETWORKS, social_network_for_url
 
 APIFY_BASE = "https://api.apify.com/v2"
+APIFY_START_TIMEOUT_SECONDS = 60
+APIFY_POLL_TIMEOUT_SECONDS = 45
+APIFY_DATASET_TIMEOUT_SECONDS = 90
+APIFY_MAX_HTTP_ATTEMPTS = 3
+APIFY_MAX_RUN_WAIT_SECONDS = 600
+logger = logging.getLogger(__name__)
 
 SEGMENT_KEYWORDS: dict[str, tuple[str, ...]] = {
     "design_build": ("design-build", "design build", "landscape construction", "landscape installation"),
@@ -67,32 +73,43 @@ class ApifyMapsClient:
         url = f"{APIFY_BASE}/acts/{self.actor_id}/runs?token={self.api_token}"
         body = json.dumps(run_input).encode()
         req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            run_data = json.loads(resp.read())
+        run_data = _read_json_with_retries(req, APIFY_START_TIMEOUT_SECONDS, "start Apify Google Maps actor")
         run_id = run_data["data"]["id"]
         dataset_id = run_data["data"]["defaultDatasetId"]
+        logger.info("Started Apify Google Maps run %s with dataset %s", run_id, dataset_id)
         self._wait_for_run(run_id)
         return self._fetch_dataset(dataset_id)
 
-    def _wait_for_run(self, run_id: str, poll_seconds: int = 5, max_wait: int = 300) -> None:
+    def _wait_for_run(
+        self,
+        run_id: str,
+        poll_seconds: int = 5,
+        max_wait: int = APIFY_MAX_RUN_WAIT_SECONDS,
+    ) -> None:
         url = f"{APIFY_BASE}/actor-runs/{run_id}?token={self.api_token}"
-        waited = 0
-        while waited < max_wait:
-            with urllib.request.urlopen(url, timeout=15) as resp:
-                data = json.loads(resp.read())
+        deadline = time.monotonic() + max_wait
+        last_status = "UNKNOWN"
+        while time.monotonic() < deadline:
+            try:
+                data = _read_json_with_retries(url, APIFY_POLL_TIMEOUT_SECONDS, f"poll Apify run {run_id}")
+            except (TimeoutError, urllib.error.URLError) as exc:
+                logger.warning("Apify run %s status poll timed out; continuing to wait: %s", run_id, exc)
+                time.sleep(poll_seconds)
+                continue
             status = data["data"]["status"]
+            if status != last_status:
+                logger.info("Apify run %s status: %s", run_id, status)
+                last_status = status
             if status in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
                 if status != "SUCCEEDED":
                     raise RuntimeError(f"Apify run {run_id} ended with status: {status}")
                 return
             time.sleep(poll_seconds)
-            waited += poll_seconds
         raise TimeoutError(f"Apify run {run_id} did not finish within {max_wait}s")
 
     def _fetch_dataset(self, dataset_id: str) -> list[dict[str, Any]]:
         url = f"{APIFY_BASE}/datasets/{dataset_id}/items?token={self.api_token}&format=json"
-        with urllib.request.urlopen(url, timeout=30) as resp:
-            return json.loads(resp.read())
+        return _read_json_with_retries(url, APIFY_DATASET_TIMEOUT_SECONDS, f"fetch Apify dataset {dataset_id}")
 
     def _normalize(self, item: dict[str, Any]) -> PlaceLead:
         def get(*keys: str, default: Any = "") -> Any:
@@ -191,6 +208,8 @@ def _extract_social_links(item: dict[str, Any], website: str = "") -> dict[str, 
         "youtubeUrl",
         "tiktok",
         "tiktokUrl",
+        "whatsapp",
+        "whatsappUrl",
     ):
         candidates.extend(_flatten_candidate_values(item.get(key)))
 
@@ -218,3 +237,36 @@ def _flatten_candidate_values(value: Any) -> list[str]:
             values.extend(_flatten_candidate_values(nested))
         return values
     return []
+
+
+def _read_json_with_retries(request: Any, timeout: int, description: str) -> Any:
+    last_exc: Exception | None = None
+    for attempt in range(1, APIFY_MAX_HTTP_ATTEMPTS + 1):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as resp:
+                return json.loads(resp.read())
+        except urllib.error.HTTPError as exc:
+            last_exc = exc
+            if exc.code < 500 or attempt == APIFY_MAX_HTTP_ATTEMPTS:
+                raise
+            logger.warning(
+                "Apify request failed while trying to %s; HTTP %s, attempt %s/%s",
+                description,
+                exc.code,
+                attempt,
+                APIFY_MAX_HTTP_ATTEMPTS,
+            )
+        except (TimeoutError, urllib.error.URLError) as exc:
+            last_exc = exc
+            if attempt == APIFY_MAX_HTTP_ATTEMPTS:
+                raise
+            logger.warning(
+                "Apify request timed out while trying to %s; attempt %s/%s",
+                description,
+                attempt,
+                APIFY_MAX_HTTP_ATTEMPTS,
+            )
+        time.sleep(min(10, attempt * 2))
+    if last_exc:
+        raise last_exc
+    raise RuntimeError(f"Apify request failed while trying to {description}")

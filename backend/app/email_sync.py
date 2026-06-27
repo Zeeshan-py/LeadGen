@@ -38,6 +38,14 @@ def sync_replied_outreach(
     raise_on_missing_credentials: bool = True,
 ) -> ReplySyncResult:
     result = ReplySyncResult()
+    rows = db.scalars(
+        select(Outreach)
+        .options(joinedload(Outreach.lead), joinedload(Outreach.campaign))
+        .where(Outreach.status.in_(ACTIVE_OUTREACH_STATUSES))
+    ).all()
+    if not rows and not raise_on_missing_credentials:
+        return result
+
     effective = effective_settings(settings, db)
     try:
         effective.require_gmail_credentials()
@@ -59,12 +67,6 @@ def sync_replied_outreach(
             raise
         result.skipped = True
         return result
-    rows = db.scalars(
-        select(Outreach)
-        .options(joinedload(Outreach.lead), joinedload(Outreach.campaign))
-        .where(Outreach.status.in_(ACTIVE_OUTREACH_STATUSES))
-    ).all()
-
     for outreach in rows:
         result.checked += 1
         if not outreach.lead:

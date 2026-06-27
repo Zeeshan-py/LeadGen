@@ -15,6 +15,7 @@ from .config import load_settings
 from .coverage import CoverageTracker
 from .models import PlaceLead, merge_unique
 from .sheets import SheetsLeadStore
+from .validation import qualifies_google_business
 from .website_scraper import WebsiteScraper
 
 MARKETS_PATH = Path("./coverage/canada_moss_markets.json")
@@ -216,14 +217,6 @@ def load_market(name: str) -> dict:
     if name not in markets:
         raise ValueError(f"Unknown market: {name}. Available: {sorted(markets.keys())}")
     return markets[name]
-
-
-def qualifies_google_business(lead: PlaceLead) -> bool:
-    if lead.user_rating_count is not None and lead.user_rating_count < 5:
-        return False
-    if lead.rating is not None and lead.rating < 3.0:
-        return False
-    return True
 
 
 def should_use_ai(lead: PlaceLead) -> bool:

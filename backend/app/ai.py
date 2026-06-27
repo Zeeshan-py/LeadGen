@@ -3,13 +3,11 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit
 
 from google import genai
 from google.genai import types
 
 from lead_automation.models import PlaceLead
-from lead_automation.social_links import SOCIAL_NETWORKS, social_network_for_url
 
 
 @dataclass(frozen=True)
@@ -125,43 +123,6 @@ Suggestions: {"; ".join(analysis.improvement_suggestions)}
             follow_up_2=str(data.get("follow_up_2", "")).strip(),
         )
 
-    def normalize_social_links(self, candidates: dict[str, list[str]]) -> dict[str, str]:
-        cleaned = {
-            network: list(dict.fromkeys(str(link).strip() for link in links if str(link).strip()))
-            for network, links in candidates.items()
-            if network in SOCIAL_NETWORKS
-        }
-        if not cleaned:
-            return {}
-
-        prompt = f"""
-You validate and normalize social profile URLs for one local business.
-Return strict JSON only. The only allowed keys are:
-facebook, instagram, linkedin, youtube, x_twitter, tiktok
-
-For each key, return one normalized https URL from the supplied candidates, or an empty string.
-Rules:
-- Do not invent a URL, handle, domain, or profile.
-- Keep only real business profile/channel URLs. Reject share, intent, login, privacy, or generic platform URLs.
-- Use only the supplied candidates for the matching network.
-- Omit unsupported keys.
-
-Candidates:
-{json.dumps(cleaned, ensure_ascii=True)}
-"""
-        data = self._json(prompt)
-        normalized: dict[str, str] = {}
-        for network in SOCIAL_NETWORKS:
-            value = data.get(network)
-            if not isinstance(value, str) or not value.strip():
-                continue
-            link = value.strip()
-            if social_network_for_url(link) != network:
-                continue
-            if any(_same_social_destination(link, candidate) for candidate in cleaned.get(network, [])):
-                normalized[network] = link
-        return normalized
-
     def _json(self, prompt: str) -> dict[str, Any]:
         response = self.client.models.generate_content(
             model=self.model,
@@ -194,14 +155,3 @@ def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item).strip()]
-
-
-def _same_social_destination(left: str, right: str) -> bool:
-    try:
-        left_parts = urlsplit(left)
-        right_parts = urlsplit(right)
-    except ValueError:
-        return False
-    left_key = (left_parts.netloc.lower().removeprefix("www."), left_parts.path.rstrip("/").lower())
-    right_key = (right_parts.netloc.lower().removeprefix("www."), right_parts.path.rstrip("/").lower())
-    return left_key == right_key

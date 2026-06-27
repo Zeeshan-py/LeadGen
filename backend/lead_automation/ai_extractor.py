@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-import json
+import logging
 
 import anthropic
 
 from .models import ExtractedLead, PlaceLead
 
 MODEL = "claude-haiku-4-5"
+logger = logging.getLogger(__name__)
 
 EXTRACT_TOOL = {
     "name": "extract_lead",
@@ -56,7 +57,7 @@ SYSTEM_PROMPT = (
     "high-end residential landscapers, landscape architects, green roof contractors. "
     "If the business is clearly a lawn care, mowing, tree service, or handyman operation with no "
     "design/installation signals, set lead_segment to 'unknown'. "
-    "Only extract what is clearly present — never guess or fabricate contact details."
+    "Only extract what is clearly present -- never guess or fabricate contact details."
 )
 
 
@@ -116,5 +117,5 @@ class LeadExtractor:
                         source_notes=inp.get("source_notes", []),
                     )
         except Exception as exc:
-            pass
+            logger.warning("Claude contact extraction failed for %s: %s", lead.business_name, exc)
         return ExtractedLead()

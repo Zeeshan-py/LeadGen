@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session, joinedload
 
-from .ai import GeminiLeadAI
+from .ai import GeminiLeadAI, WebsiteAnalysis
 from .config import get_settings
 from .database import SessionLocal, get_db, init_db
 from .email_sync import sync_replied_outreach
@@ -41,6 +41,8 @@ from .settings_store import effective_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+logging.getLogger("app").setLevel(logging.INFO)
+logging.getLogger("lead_automation").setLevel(logging.INFO)
 app = FastAPI(title="LeadForge AI API", version="1.0.0")
 
 app.add_middleware(
@@ -302,17 +304,13 @@ def regenerate_outreach(lead_id: str, db: Session = Depends(get_db)) -> Outreach
     try:
         effective = effective_settings(settings, db)
         ai = GeminiLeadAI(effective.gemini_api_key, effective.gemini_model)
-        analysis = type(
-            "Analysis",
-            (),
-            {
-                "website_score": lead.website_score,
-                "opportunity_score": lead.opportunity_score,
-                "website_summary": lead.website_summary,
-                "website_problems": lead.website_problems,
-                "improvement_suggestions": lead.improvement_suggestions,
-            },
-        )()
+        analysis = WebsiteAnalysis(
+            website_score=lead.website_score,
+            opportunity_score=lead.opportunity_score,
+            website_summary=lead.website_summary,
+            website_problems=lead.website_problems,
+            improvement_suggestions=lead.improvement_suggestions,
+        )
         from lead_automation.models import PlaceLead
 
         place_lead = PlaceLead(
@@ -336,6 +334,7 @@ def regenerate_outreach(lead_id: str, db: Session = Depends(get_db)) -> Outreach
         db.refresh(outreach)
         return outreach
     except Exception as exc:
+        logger.exception("Outreach regeneration failed for lead %s", lead_id)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -373,6 +372,7 @@ def send_email(payload: SendEmailRequest, db: Session = Depends(get_db)) -> Outr
         db.refresh(outreach)
         return outreach
     except Exception as exc:
+        logger.exception("Email send failed for outreach %s", payload.outreach_id)
         outreach.status = "failed"
         outreach.failed_reason = str(exc)
         outreach.lead.outreach_status = "failed"
@@ -495,11 +495,15 @@ async def _reply_sync_loop() -> None:
     await asyncio.sleep(5)
     while True:
         try:
-            with SessionLocal() as db:
-                sync_replied_outreach(db, settings, raise_on_missing_credentials=False)
+            await asyncio.to_thread(_sync_replies_once)
         except Exception:
             logger.exception("Automatic Gmail reply sync failed")
         await asyncio.sleep(max(15, settings.gmail_reply_sync_interval_seconds))
+
+
+def _sync_replies_once() -> None:
+    with SessionLocal() as db:
+        sync_replied_outreach(db, settings, raise_on_missing_credentials=False)
 
 
 def _sse(payload: dict[str, Any]) -> str:

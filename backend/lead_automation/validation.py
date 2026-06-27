@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import re
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit, urlunsplit
+
+if TYPE_CHECKING:
+    from .models import PlaceLead
 
 EMAIL_RE = re.compile(r"^[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?(?:\.[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?)+$", re.I)
 PHONE_RE = re.compile(r"\d")
@@ -54,3 +58,11 @@ def normalize_phone(value: str) -> str:
         return ""
     prefix = "+" if candidate.startswith("+") else ""
     return f"{prefix}{digits}"
+
+
+def qualifies_google_business(lead: PlaceLead) -> bool:
+    if lead.user_rating_count is not None and lead.user_rating_count < 5:
+        return False
+    if lead.rating is not None and lead.rating < 3.0:
+        return False
+    return True
