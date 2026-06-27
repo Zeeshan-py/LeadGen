@@ -30,6 +30,7 @@ COLUMNS = [
     "youtube",
     "x_twitter",
     "tiktok",
+    "whatsapp",
 ]
 
 
@@ -52,10 +53,11 @@ class SheetsLeadStore:
             creds = Credentials.from_service_account_file(service_account_file, scopes=SCOPES)
         authorized_http = google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http(timeout=60))
         self._service = build("sheets", "v4", http=authorized_http, cache_discovery=False)
+        self._rows_cache: list[list[str]] | None = None
         self._ensure_tab_exists()
 
     def existing_dedupe_keys(self) -> set[str]:
-        rows = self._read_all_rows()
+        rows = self._rows()
         if len(rows) < 2:
             return set()
         try:
@@ -67,8 +69,7 @@ class SheetsLeadStore:
     def upsert_leads(self, leads: list[PlaceLead]) -> None:
         if not leads:
             return
-        self._ensure_header()
-        rows = self._read_all_rows()
+        rows = self._ensure_header(self._rows())
         existing_keys: dict[str, int] = {}
         if len(rows) > 1:
             try:
@@ -106,10 +107,11 @@ class SheetsLeadStore:
                 insertDataOption="INSERT_ROWS",
                 body={"values": appends},
             ).execute()
+        self._rows_cache = None
 
     def replace_leads(self, leads: list[PlaceLead]) -> None:
         self._clear_sheet()
-        self._ensure_header()
+        self._ensure_header([])
         if leads:
             self._service.spreadsheets().values().append(
                 spreadsheetId=self.spreadsheet_id,
@@ -118,9 +120,9 @@ class SheetsLeadStore:
                 insertDataOption="INSERT_ROWS",
                 body={"values": [_lead_to_row(l) for l in leads]},
             ).execute()
+        self._rows_cache = None
 
-    def _ensure_header(self) -> None:
-        rows = self._read_all_rows()
+    def _ensure_header(self, rows: list[list[str]]) -> list[list[str]]:
         if not rows or rows[0] != COLUMNS:
             self._service.spreadsheets().values().update(
                 spreadsheetId=self.spreadsheet_id,
@@ -128,6 +130,9 @@ class SheetsLeadStore:
                 valueInputOption="USER_ENTERED",
                 body={"values": [COLUMNS]},
             ).execute()
+            rows = [COLUMNS, *rows[1:]] if rows else [COLUMNS]
+            self._rows_cache = rows
+        return rows
 
     def _ensure_tab_exists(self) -> None:
         meta = self._service.spreadsheets().get(spreadsheetId=self.spreadsheet_id).execute()
@@ -144,6 +149,7 @@ class SheetsLeadStore:
             range=f"'{self.sheet_name}'",
             body={},
         ).execute()
+        self._rows_cache = []
 
     def _read_all_rows(self) -> list[list[str]]:
         result = self._service.spreadsheets().values().get(
@@ -151,6 +157,11 @@ class SheetsLeadStore:
             range=f"'{self.sheet_name}'",
         ).execute()
         return result.get("values", [])
+
+    def _rows(self) -> list[list[str]]:
+        if self._rows_cache is None:
+            self._rows_cache = self._read_all_rows()
+        return self._rows_cache
 
 
 def _lead_to_row(lead: PlaceLead) -> list[str]:
@@ -173,6 +184,7 @@ def _lead_to_row(lead: PlaceLead) -> list[str]:
         lead.social_links.get("youtube", ""),
         lead.social_links.get("x_twitter", ""),
         lead.social_links.get("tiktok", ""),
+        lead.social_links.get("whatsapp", ""),
     ]
 
 

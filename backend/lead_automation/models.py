@@ -32,15 +32,27 @@ class PlaceLead:
     raw_emails: list[str] = field(default_factory=list)
     raw_phones: list[str] = field(default_factory=list)
     social_links: dict[str, str] = field(default_factory=dict)
+    email_confidence: dict[str, float] = field(default_factory=dict)
+    social_confidence: dict[str, dict[str, float]] = field(default_factory=dict)
+    google_business_confidence: float = 0.0
     social_status: str = "missing"
     source_notes: list[str] = field(default_factory=list)
 
     def primary_email(self) -> str:
+        candidates: list[str] = []
         for value in [self.email, *self.raw_emails]:
             normalized = normalize_email(value)
-            if normalized:
-                return normalized
-        return ""
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+        if not candidates:
+            return ""
+        return max(
+            candidates,
+            key=lambda candidate: (
+                self.email_confidence.get(candidate, 0.0),
+                -candidates.index(candidate),
+            ),
+        )
 
     def primary_phone(self) -> str:
         for value in [self.phone, *self.raw_phones]:
@@ -68,12 +80,27 @@ class PlaceLead:
         phone_part = re.sub(r"[^0-9]", "", self.primary_phone())
         return f"name:{name_part}:{phone_part}"
 
+    def record_email_confidence(self, email: str, confidence: float) -> None:
+        normalized = normalize_email(email)
+        if normalized:
+            self.email_confidence[normalized] = max(
+                self.email_confidence.get(normalized, 0.0),
+                round(confidence, 3),
+            )
+
+    def record_social_confidence(self, network: str, url: str, confidence: float) -> None:
+        if not network or not url:
+            return
+        scores = self.social_confidence.setdefault(network, {})
+        scores[url] = max(scores.get(url, 0.0), round(confidence, 3))
+
     def merge_extracted(self, extracted: ExtractedLead) -> None:
         if extracted.owner_or_contact and not self.owner_or_contact:
             self.owner_or_contact = extracted.owner_or_contact
         if extracted.email and not self.primary_email():
             self.email = extracted.email
             self.raw_emails = merge_unique(self.raw_emails, [extracted.email])
+            self.record_email_confidence(extracted.email, 0.75)
         if extracted.phone and not self.primary_phone():
             self.phone = extracted.phone
         if extracted.lead_segment and extracted.lead_segment != "unknown":
