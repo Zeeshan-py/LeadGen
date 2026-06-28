@@ -45,7 +45,7 @@ class ContactEvidenceRecorder:
                     "email",
                     email,
                     ["apify_google_maps"],
-                    confidence=0.95,
+                    confidence=lead.email_confidence.get(email, 0.95),
                 )
         for phone in [lead.phone, *lead.raw_phones]:
             if phone:
@@ -57,7 +57,10 @@ class ContactEvidenceRecorder:
                     network,
                     link,
                     ["apify_google_maps"],
-                    confidence=0.93,
+                    confidence=lead.social_confidence.get(network, {}).get(
+                        link,
+                        0.93,
+                    ),
                 )
         if lead.google_maps_url:
             lead.google_business_confidence = max(
@@ -226,6 +229,15 @@ class ContactEnrichmentService:
         lead: PlaceLead,
         payload: GenerateLeadRequest,
     ) -> ContactEnrichmentResult:
+        logger.info(
+            "Contact enrichment started: business=%r website_found=%s "
+            "initial_email=%r initial_phone=%r initial_socials=%s",
+            lead.business_name,
+            bool(lead.website),
+            lead.primary_email(),
+            lead.primary_phone(),
+            sorted(lead.social_links),
+        )
         self.evidence.record_initial(lead)
         crawl = _empty_crawl_result()
         social_from_url = _social_candidates_from_url(lead.website)
@@ -254,9 +266,18 @@ class ContactEnrichmentService:
                     [f"Invalid website skipped during enrichment: {supplied_website}"],
                 )
             else:
+                logger.info(
+                    "Website scraper executed: Yes business=%r website=%s",
+                    lead.business_name,
+                    lead.website,
+                )
                 crawl = self.scraper.crawl(lead.website)
                 self._apply_primary_crawl(lead, crawl, social_from_url)
         else:
+            logger.info(
+                "Website scraper executed: No business=%r reason=no_website",
+                lead.business_name,
+            )
             logger.info("Lead enrichment continuing without website for %s", lead.business_name)
             lead.source_notes = merge_unique(
                 lead.source_notes,
@@ -270,15 +291,39 @@ class ContactEnrichmentService:
             crawl.get("social_links", {}),
         )
 
-        if self.settings.enable_contact_discovery and (
+        fallback_required = self.settings.enable_contact_discovery and (
             not lead.website
             or not lead.primary_email()
             or not social_candidates
-        ):
+        )
+        logger.info(
+            "Fallback enrichment executed: %s business=%r reason=%s",
+            "Yes" if fallback_required else "No",
+            lead.business_name,
+            (
+                "no_website"
+                if not lead.website
+                else "missing_contact"
+                if fallback_required
+                else "complete"
+            ),
+        )
+        if fallback_required:
             discovery_crawl = self._discover_missing_data(lead, payload, social_candidates)
             if discovery_crawl:
                 crawl = _merge_crawl_results(crawl, discovery_crawl)
 
+        logger.info(
+            "Contact enrichment completed: business=%r email_found=%r "
+            "phone_found=%r socials_found=%s",
+            lead.business_name,
+            lead.primary_email(),
+            lead.primary_phone(),
+            {
+                network: len(links)
+                for network, links in social_candidates.items()
+            },
+        )
         return ContactEnrichmentResult(crawl=crawl, social_candidates=social_candidates)
 
     def _apply_primary_crawl(

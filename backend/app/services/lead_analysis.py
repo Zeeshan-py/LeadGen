@@ -7,7 +7,12 @@ from typing import Any
 from lead_automation.ai_extractor import LeadExtractor
 from lead_automation.models import PlaceLead
 
-from ..ai import GeminiLeadAI, OutreachDrafts, WebsiteAnalysis
+from ..ai import (
+    GeminiLeadAI,
+    OutreachDrafts,
+    WebsiteAnalysis,
+    fallback_outreach_drafts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,12 +75,39 @@ class LeadAnalysisService:
         business_type: str,
         analysis: WebsiteAnalysis,
     ) -> OutreachDrafts:
+        last_error: Exception | None = None
         if self.ai:
-            try:
-                return self.ai.generate_outreach(lead, business_type, analysis)
-            except Exception as exc:
-                _log_ai_failure("outreach generation", lead.business_name, exc)
-        return OutreachDrafts("", "", "", "", "")
+            for attempt in range(1, 3):
+                try:
+                    drafts = self.ai.generate_outreach(
+                        lead,
+                        business_type,
+                        analysis,
+                    )
+                    if not drafts.cold_email.strip():
+                        raise RuntimeError("AI returned an empty cold email draft")
+                    return drafts
+                except Exception as exc:
+                    last_error = exc
+                    logger.warning(
+                        "AI outreach generation attempt %s of 2 failed for %s",
+                        attempt,
+                        lead.business_name,
+                        exc_info=True,
+                    )
+
+        error_message = _friendly_outreach_error(last_error)
+        logger.warning(
+            "Using personalized fallback outreach for %s: %s",
+            lead.business_name,
+            error_message,
+        )
+        return fallback_outreach_drafts(
+            lead,
+            business_type,
+            analysis,
+            generation_error=error_message,
+        )
 
 
 def _log_ai_failure(operation: str, business_name: str, exc: Exception) -> None:
@@ -91,3 +123,21 @@ def _log_ai_failure(operation: str, business_name: str, exc: Exception) -> None:
         )
         return
     logger.exception("AI %s failed for %s", operation, business_name)
+
+
+def _friendly_outreach_error(exc: Exception | None) -> str:
+    if exc is None:
+        return "AI outreach is not configured. A personalized fallback draft was generated."
+    message = str(exc).lower()
+    if any(
+        marker in message
+        for marker in ("429", "resource_exhausted", "quota", "rate limit")
+    ):
+        return (
+            "AI outreach quota is unavailable after one retry. "
+            "A personalized fallback draft was generated."
+        )
+    return (
+        "AI outreach generation failed after one retry. "
+        "A personalized fallback draft was generated."
+    )

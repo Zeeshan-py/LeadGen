@@ -51,11 +51,13 @@ class LeadPersistenceService:
         )
         self.db.commit()
         logger.info(
-            "Persisted lead %s with email confidence %.3f, %s selected social "
-            "profiles, and Google Business confidence %.3f",
+            "Database save completed: Yes business=%r email=%r phone=%r "
+            "socials=%s email_confidence=%.3f google_business_confidence=%.3f",
             lead.business_name,
+            lead.primary_email(),
+            lead.primary_phone(),
+            sorted(lead.social_links),
             lead.email_confidence.get(lead.primary_email(), 0.0),
-            len(lead.social_links),
             lead.google_business_confidence,
         )
         return db_lead
@@ -140,5 +142,6 @@ class LeadPersistenceService:
         row.cold_email = drafts.cold_email
         row.follow_up_1 = drafts.follow_up_1
         row.follow_up_2 = drafts.follow_up_2
+        row.failed_reason = drafts.generation_error
         self.db.add(row)
         return row

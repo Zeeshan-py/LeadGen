@@ -21,7 +21,7 @@ from .ai import GeminiLeadAI, WebsiteAnalysis
 from .config import get_settings
 from .database import SessionLocal, get_db, init_db
 from .email_sync import sync_replied_outreach
-from .gmail import GmailClient
+from .gmail import GmailClient, GmailConfigurationError, GmailSendError
 from .google_sheets import validate_google_sheets
 from .models import Analytics, Campaign, Lead, LeadGenerationJob, Outreach, Setting
 from .runner import create_generation_job, get_job, get_job_snapshot, get_latest_job_snapshot, run_generation_job
@@ -37,10 +37,16 @@ from .schemas import (
     SendEmailRequest,
     SettingsPayload,
 )
+from .services.lead_analysis import LeadAnalysisService
 from .settings_store import effective_settings
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 logging.getLogger("app").setLevel(logging.INFO)
 logging.getLogger("lead_automation").setLevel(logging.INFO)
 app = FastAPI(title="LeadForge AI API", version="1.0.0")
@@ -303,7 +309,11 @@ def regenerate_outreach(lead_id: str, db: Session = Depends(get_db)) -> Outreach
         raise HTTPException(status_code=404, detail="Lead not found")
     try:
         effective = effective_settings(settings, db)
-        ai = GeminiLeadAI(effective.gemini_api_key, effective.gemini_model)
+        ai = (
+            GeminiLeadAI(effective.gemini_api_key, effective.gemini_model)
+            if effective.gemini_api_key
+            else None
+        )
         analysis = WebsiteAnalysis(
             website_score=lead.website_score,
             opportunity_score=lead.opportunity_score,
@@ -320,7 +330,10 @@ def regenerate_outreach(lead_id: str, db: Session = Depends(get_db)) -> Outreach
             email=lead.email,
             phone=lead.phone,
         )
-        drafts = ai.generate_outreach(place_lead, lead.business_type, analysis)
+        drafts = LeadAnalysisService(
+            ai=ai,
+            contact_extractor=None,
+        ).generate_outreach(place_lead, lead.business_type, analysis)
         outreach = db.scalar(select(Outreach).where(Outreach.lead_id == lead.id))
         if not outreach:
             outreach = Outreach(lead_id=lead.id, campaign_id=lead.campaign_id)
@@ -329,13 +342,20 @@ def regenerate_outreach(lead_id: str, db: Session = Depends(get_db)) -> Outreach
         outreach.cold_email = drafts.cold_email
         outreach.follow_up_1 = drafts.follow_up_1
         outreach.follow_up_2 = drafts.follow_up_2
+        outreach.failed_reason = drafts.generation_error
         db.add(outreach)
         db.commit()
         db.refresh(outreach)
         return outreach
     except Exception as exc:
         logger.exception("Outreach regeneration failed for lead %s", lead_id)
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Outreach generation failed after one retry. "
+                "The existing draft was left unchanged."
+            ),
+        ) from exc
 
 
 @app.post("/send-email", response_model=OutreachRead)
@@ -350,15 +370,32 @@ def send_email(payload: SendEmailRequest, db: Session = Depends(get_db)) -> Outr
     try:
         effective = effective_settings(settings, db)
         effective.require_gmail_credentials()
-        body = getattr(outreach, payload.version)
+        if not outreach.lead or not outreach.lead.email.strip():
+            raise RuntimeError("This lead does not have a valid email address.")
+        body = str(getattr(outreach, payload.version) or "").strip()
+        if not body:
+            raise RuntimeError(
+                "The selected outreach draft is empty. Regenerate it before sending."
+            )
+        subject = outreach.subject_line.strip()
+        if not subject:
+            raise RuntimeError(
+                "The outreach subject line is empty. Regenerate it before sending."
+            )
         gmail = GmailClient(
             effective.gmail_client_id,
             effective.gmail_client_secret,
             effective.gmail_refresh_token,
             effective.gmail_sender_email,
         )
+        gmail.validate_configuration()
         tracking_url = f"{effective.public_backend_url.rstrip('/')}/email/open/{outreach.tracking_id}.png"
-        sent = gmail.send_email(outreach.lead.email, outreach.subject_line, body, tracking_url)
+        sent = gmail.send_email(
+            outreach.lead.email,
+            subject,
+            body,
+            tracking_url,
+        )
         outreach.status = "sent"
         outreach.selected_version = payload.version
         outreach.gmail_message_id = sent.message_id
@@ -377,7 +414,15 @@ def send_email(payload: SendEmailRequest, db: Session = Depends(get_db)) -> Outr
         outreach.failed_reason = str(exc)
         outreach.lead.outreach_status = "failed"
         db.commit()
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if isinstance(exc, (GmailConfigurationError, GmailSendError)):
+            detail = str(exc)
+        elif isinstance(exc, RuntimeError):
+            detail = str(exc)
+        else:
+            detail = (
+                "Email sending failed unexpectedly. Check the backend logs for details."
+            )
+        raise HTTPException(status_code=400, detail=detail) from exc
 
 
 @app.post("/send-email/sync-statuses")

@@ -84,10 +84,11 @@ def run_generation_job(job_id: str, payload: GenerateLeadRequest) -> None:
     settings = get_settings()
     started = time.monotonic()
     logger.info(
-        "Generation job %s started for %s in %s (limit=%s, website_mode=%s)",
+        "Generation job %s started for %s in %s (city=%s, limit=%s, website_mode=%s)",
         job_id,
         payload.business_type,
         payload.country,
+        payload.city or "all",
         payload.max_leads,
         payload.website_mode,
     )
@@ -309,10 +310,11 @@ def _build_optional_sheets_store(
 
 
 def _create_campaign(db: Session, payload: GenerateLeadRequest) -> Campaign:
-    name = payload.campaign_name or f"{payload.country} {payload.business_type}"
+    market = ", ".join(part for part in (payload.city, payload.country) if part)
+    name = payload.campaign_name or f"{market} {payload.business_type}"
     campaign = Campaign(
         name=name,
-        city="",
+        city=payload.city,
         state="",
         continent=payload.continent,
         country=payload.country,

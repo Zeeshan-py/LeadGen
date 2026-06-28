@@ -17,10 +17,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { generationEventsUrl, getGenerationJob, getLatestGenerationJob, startGeneration } from "@/lib/api";
-import { businessTypes, continents, countriesByContinent, type Continent } from "@/lib/markets";
+import {
+  businessTypes,
+  continents,
+  countriesByContinent,
+  getCitiesForCountry,
+  type Continent,
+} from "@/lib/markets";
 import type { GenerationJob } from "@/lib/types";
 
 const leadLimits = [10, 25, 50, 100, 250, 500];
+const allCitiesValue = "__all_cities__";
 const lastGenerationJobKey = "leadforge.lastGenerationJobId";
 const terminalStatuses = new Set(["completed", "failed"]);
 
@@ -32,12 +39,15 @@ export default function LeadGeneratorPage() {
   const [form, setForm] = useState({
     continent: "North America" as Continent,
     country: "United States",
+    city: "",
     business_type: "Dentists",
     website_mode: "withWebsite",
     max_leads: 25,
   });
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [running, setRunning] = useState(false);
+  const [cities, setCities] = useState<string[]>([]);
+  const [citiesLoading, setCitiesLoading] = useState(true);
   const sourceRef = useRef<EventSource | null>(null);
   const countries = countriesByContinent[form.continent];
 
@@ -50,6 +60,31 @@ export default function LeadGeneratorPage() {
     sourceRef.current?.close();
     sourceRef.current = null;
   }, []);
+
+  useEffect(() => {
+    let ignore = false;
+    setCitiesLoading(true);
+    getCitiesForCountry(form.country)
+      .then((items) => {
+        if (!ignore) {
+          setCities(items);
+        }
+      })
+      .catch((error) => {
+        if (!ignore) {
+          setCities([]);
+          toast.error(error instanceof Error ? error.message : "Could not load cities");
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setCitiesLoading(false);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [form.country]);
 
   const connectToJob = useCallback(
     (jobId: string) => {
@@ -150,7 +185,12 @@ export default function LeadGeneratorPage() {
                 value={form.continent}
                 onValueChange={(value) => {
                   const continent = value as Continent;
-                  setForm((prev) => ({ ...prev, continent, country: countriesByContinent[continent][0] }));
+                  setForm((prev) => ({
+                    ...prev,
+                    continent,
+                    country: countriesByContinent[continent][0],
+                    city: "",
+                  }));
                 }}
               >
                 <SelectTrigger id="continent">
@@ -169,7 +209,7 @@ export default function LeadGeneratorPage() {
               <FieldLabel htmlFor="country">Country</FieldLabel>
               <Select
                 value={form.country}
-                onValueChange={(country) => setForm((prev) => ({ ...prev, country }))}
+                onValueChange={(country) => setForm((prev) => ({ ...prev, country, city: "" }))}
               >
                 <SelectTrigger id="country">
                   <SelectValue placeholder="Select country" />
@@ -178,6 +218,29 @@ export default function LeadGeneratorPage() {
                   <SelectGroup>
                     {countries.map((country) => (
                       <SelectItem key={country} value={country}>{country}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="city">City</FieldLabel>
+              <Select
+                value={form.city || allCitiesValue}
+                onValueChange={(city) => setForm((prev) => ({
+                  ...prev,
+                  city: city === allCitiesValue ? "" : city,
+                }))}
+                disabled={citiesLoading}
+              >
+                <SelectTrigger id="city">
+                  <SelectValue placeholder={citiesLoading ? "Loading cities..." : "All cities"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectItem value={allCitiesValue}>All cities</SelectItem>
+                    {cities.map((city) => (
+                      <SelectItem key={city} value={city}>{city}</SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
@@ -199,21 +262,6 @@ export default function LeadGeneratorPage() {
               </Select>
             </Field>
             <Field>
-              <FieldLabel htmlFor="max_leads">Number of Leads</FieldLabel>
-              <Select value={String(form.max_leads)} onValueChange={(max_leads) => setForm((prev) => ({ ...prev, max_leads: Number(max_leads) }))}>
-                <SelectTrigger id="max_leads">
-                  <SelectValue placeholder="Select lead limit" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {leadLimits.map((limit) => (
-                      <SelectItem key={limit} value={String(limit)}>{limit} leads</SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
               <FieldLabel>Website Filter</FieldLabel>
               <Select value={form.website_mode} onValueChange={(value) => setForm((prev) => ({ ...prev, website_mode: value }))}>
                 <SelectTrigger aria-label="Website Filter">
@@ -224,6 +272,21 @@ export default function LeadGeneratorPage() {
                     <SelectItem value="withWebsite">With website</SelectItem>
                     <SelectItem value="withoutWebsite">Without Website</SelectItem>
                     <SelectItem value="allPlaces">All</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="max_leads">Number of Leads</FieldLabel>
+              <Select value={String(form.max_leads)} onValueChange={(max_leads) => setForm((prev) => ({ ...prev, max_leads: Number(max_leads) }))}>
+                <SelectTrigger id="max_leads">
+                  <SelectValue placeholder="Select lead limit" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {leadLimits.map((limit) => (
+                      <SelectItem key={limit} value={String(limit)}>{limit} leads</SelectItem>
+                    ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>

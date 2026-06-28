@@ -9,12 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 class GenerateLeadRequest(BaseModel):
     continent: str = Field(min_length=1, max_length=80)
     country: str = Field(min_length=1, max_length=120)
+    city: str = Field(default="", max_length=120)
     business_type: str = Field(min_length=1, max_length=160)
     max_leads: int = Field(default=50, ge=1, le=500)
     website_mode: str = Field(default="withWebsite", pattern="^(allPlaces|withWebsite|withoutWebsite)$")
     campaign_name: str | None = Field(default=None, max_length=180)
 
-    @field_validator("continent", "country", "business_type", "campaign_name")
+    @field_validator("continent", "country", "city", "business_type", "campaign_name")
     @classmethod
     def clean_text(cls, value: str | None) -> str | None:
         if value is None:

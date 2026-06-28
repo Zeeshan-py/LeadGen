@@ -134,7 +134,7 @@ def _create_job_record(job_id: str, payload: GenerateLeadRequest) -> None:
             LeadGenerationJob(
                 id=job_id,
                 status="queued",
-                city="",
+                city=payload.city,
                 state="",
                 continent=payload.continent,
                 country=payload.country,

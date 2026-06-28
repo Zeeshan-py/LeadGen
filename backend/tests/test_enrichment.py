@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 
+from lead_automation.apify_maps import ApifyMapsClient
 from lead_automation.confidence import DiscoveryIdentity, HIGH_CONFIDENCE_THRESHOLD
 from lead_automation.contact_discovery import ContactDiscovery
 from lead_automation.models import PlaceLead
@@ -46,6 +47,17 @@ class FakeRenderedCrawler:
 class FailedStaticWebsiteScraper(WebsiteScraper):
     def _fetch(self, url: str) -> str | None:
         return None
+
+
+class CapturingMapsClient(ApifyMapsClient):
+    def __init__(self, items: list[dict[str, object]]) -> None:
+        super().__init__("test-token", "test/actor")
+        self.items = items
+        self.run_input: dict[str, object] = {}
+
+    def _run_actor(self, run_input: dict[str, object]) -> list[dict[str, object]]:
+        self.run_input = run_input
+        return self.items
 
 
 class EnrichmentTests(unittest.TestCase):
@@ -209,6 +221,89 @@ class EnrichmentTests(unittest.TestCase):
         lead.record_email_confidence("contact@acmedental.com", 0.97)
 
         self.assertEqual(lead.primary_email(), "contact@acmedental.com")
+
+    def test_no_website_maps_search_requests_and_parses_web_results(self) -> None:
+        client = CapturingMapsClient(
+            [
+                {
+                    "title": "Beehive Salon",
+                    "placeId": "beehive-emporia",
+                    "address": "1013 W 12th Ave, Emporia, KS 66801",
+                    "city": "Emporia",
+                    "state": "Kansas",
+                    "country": "United States",
+                    "phone": "6203421952",
+                    "url": "https://www.google.com/maps/place/Beehive+Salon",
+                    "website": "",
+                    "webResults": [
+                        {
+                            "title": "Beehive Salon | Emporia KS - Facebook",
+                            "url": "https://www.facebook.com/emporiabeehivesalon/",
+                            "displayedUrl": "facebook.com/emporiabeehivesalon",
+                            "description": (
+                                "Beehive Salon in Emporia, Kansas. "
+                                "Email hello@emporiabeehive.example."
+                            ),
+                        }
+                    ],
+                }
+            ]
+        )
+
+        leads = client.search_one(
+            "Beehive Salon",
+            "Emporia, Kansas",
+            max_results=1,
+            website_filter="withoutWebsite",
+        )
+
+        self.assertTrue(client.run_input["scrapePlaceDetailPage"])
+        self.assertTrue(client.run_input["includeWebResults"])
+        self.assertEqual(leads[0].primary_email(), "hello@emporiabeehive.example")
+        self.assertEqual(
+            leads[0].social_links["facebook"],
+            "https://www.facebook.com/emporiabeehivesalon/",
+        )
+        self.assertGreaterEqual(
+            leads[0].email_confidence["hello@emporiabeehive.example"],
+            HIGH_CONFIDENCE_THRESHOLD,
+        )
+        self.assertGreaterEqual(
+            leads[0].social_confidence["facebook"][
+                "https://www.facebook.com/emporiabeehivesalon/"
+            ],
+            HIGH_CONFIDENCE_THRESHOLD,
+        )
+
+    def test_maps_parser_reads_plural_social_contact_fields(self) -> None:
+        client = CapturingMapsClient(
+            [
+                {
+                    "title": "Acme Dental",
+                    "placeId": "acme-dental",
+                    "website": "https://acmedental.example",
+                    "facebooks": ["https://facebook.com/acme-dental"],
+                    "instagrams": ["https://instagram.com/acme-dental"],
+                    "linkedIns": ["https://linkedin.com/company/acme-dental"],
+                }
+            ]
+        )
+
+        lead = client.search_one(
+            "Acme Dental",
+            "Dallas",
+            max_results=1,
+            website_filter="withWebsite",
+        )[0]
+
+        self.assertEqual(
+            lead.social_links,
+            {
+                "facebook": "https://facebook.com/acme-dental",
+                "instagram": "https://instagram.com/acme-dental",
+                "linkedin": "https://linkedin.com/company/acme-dental",
+            },
+        )
 
 
 if __name__ == "__main__":

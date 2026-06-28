@@ -2,13 +2,21 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import urllib.error
 import urllib.request
 from typing import Any
 
-from .models import PlaceLead
+from .confidence import (
+    DiscoveryIdentity,
+    email_candidate_confidence,
+    is_high_confidence,
+    social_candidate_confidence,
+)
+from .models import PlaceLead, merge_unique
 from .social_links import SOCIAL_NETWORKS, social_network_for_url
+from .validation import normalize_email
 
 APIFY_BASE = "https://api.apify.com/v2"
 APIFY_START_TIMEOUT_SECONDS = 60
@@ -16,6 +24,7 @@ APIFY_POLL_TIMEOUT_SECONDS = 45
 APIFY_DATASET_TIMEOUT_SECONDS = 90
 APIFY_MAX_HTTP_ATTEMPTS = 3
 APIFY_MAX_RUN_WAIT_SECONDS = 600
+EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 logger = logging.getLogger(__name__)
 
 SEGMENT_KEYWORDS: dict[str, tuple[str, ...]] = {
@@ -43,6 +52,7 @@ class ApifyMapsClient:
     ) -> list[PlaceLead]:
         if seen_place_ids is None:
             seen_place_ids = set()
+        include_web_results = website_filter == "withoutWebsite"
         run_input = {
             "searchStringsArray": [query],
             "locationQuery": location,
@@ -54,10 +64,24 @@ class ApifyMapsClient:
             "maxReviews": 0,
             "maxImages": 0,
             "scrapeContacts": True,
-            "scrapePlaceDetailPage": False,
+            "scrapePlaceDetailPage": include_web_results,
+            "includeWebResults": include_web_results,
             "maximumLeadsEnrichmentRecords": 0,
         }
+        logger.info(
+            "Google Maps search executed: query=%r location=%r website_filter=%s "
+            "web_results_requested=%s",
+            query,
+            location,
+            website_filter,
+            include_web_results,
+        )
         raw = self._run_actor(run_input)
+        logger.info(
+            "Google Maps search completed: query=%r raw_leads=%s",
+            query,
+            len(raw),
+        )
         leads = []
         for item in raw:
             lead = self._normalize(item)
@@ -127,12 +151,54 @@ class ApifyMapsClient:
         country = get("country", default="")
         phone = get("phone", "phoneUnformatted", default="")
         emails = _extract_values(item, ("emails", "email", "contactEmails", "emailsUncertain"))
+        direct_emails = list(emails)
         phones = _extract_values(item, ("phones", "phoneNumbers", "contactPhones"))
         social_links = _extract_social_links(item, website)
         maps_url = get("url", "googleMapsUrl", "placeUrl", default="")
         place_id = get("placeId", "id", default="")
         rating = get("totalScore", "rating", default=None)
         review_count = get("reviewsCount", "userRatingsTotal", default=None)
+        identity = DiscoveryIdentity(
+            business_name=str(name),
+            address=str(address),
+            city=str(city),
+            state=str(state),
+            country=str(country),
+            phone=str(phone),
+            website=str(website),
+            google_maps_url=str(maps_url),
+        )
+        (
+            web_emails,
+            web_social_links,
+            web_email_confidence,
+            web_social_confidence,
+            web_source_notes,
+        ) = _extract_web_result_contacts(item, identity)
+        emails = merge_unique(emails, web_emails)
+        email_confidence = {
+            normalized: 0.95
+            for value in direct_emails
+            if (normalized := normalize_email(value))
+        }
+        for value, confidence in web_email_confidence.items():
+            email_confidence[value] = max(email_confidence.get(value, 0.0), confidence)
+
+        social_confidence = {
+            network: {url: 0.93}
+            for network, url in social_links.items()
+        }
+        for network, url in web_social_links.items():
+            confidence = web_social_confidence.get(network, {}).get(url, 0.0)
+            existing = social_links.get(network)
+            existing_confidence = (
+                social_confidence.get(network, {}).get(existing, 0.0)
+                if existing
+                else 0.0
+            )
+            if not existing or confidence > existing_confidence:
+                social_links[network] = url
+            social_confidence.setdefault(network, {})[url] = confidence
 
         description = " ".join(filter(None, [
             str(get("categoryName", "categories", default="")),
@@ -141,6 +207,16 @@ class ApifyMapsClient:
         ])).lower()
 
         segment = _infer_segment(description)
+        logger.info(
+            "Lead parsed: business=%r website_found=%s email_count=%s phone_found=%s "
+            "socials_found=%s google_web_results=%s",
+            name,
+            bool(website),
+            len(emails),
+            bool(phone or phones),
+            sorted(social_links),
+            len(item.get("webResults") or []),
+        )
 
         return PlaceLead(
             place_id=str(place_id),
@@ -158,7 +234,10 @@ class ApifyMapsClient:
             raw_emails=emails,
             raw_phones=phones,
             social_links=social_links,
+            email_confidence=email_confidence,
+            social_confidence=social_confidence,
             social_status="found" if social_links else "missing",
+            source_notes=web_source_notes,
         )
 
 
@@ -196,20 +275,28 @@ def _extract_social_links(item: dict[str, Any], website: str = "") -> dict[str, 
         "socials",
         "facebook",
         "facebookUrl",
+        "facebooks",
         "instagram",
         "instagramUrl",
+        "instagrams",
         "linkedin",
         "linkedinUrl",
+        "linkedIn",
+        "linkedIns",
         "twitter",
         "twitterUrl",
+        "twitters",
         "x",
         "xUrl",
         "youtube",
         "youtubeUrl",
+        "youtubes",
         "tiktok",
         "tiktokUrl",
+        "tiktoks",
         "whatsapp",
         "whatsappUrl",
+        "whatsapps",
     ):
         candidates.extend(_flatten_candidate_values(item.get(key)))
 
@@ -219,6 +306,110 @@ def _extract_social_links(item: dict[str, Any], website: str = "") -> dict[str, 
         if network in SOCIAL_NETWORKS and network not in result:
             result[network] = value
     return result
+
+
+def _extract_web_result_contacts(
+    item: dict[str, Any],
+    identity: DiscoveryIdentity,
+) -> tuple[
+    list[str],
+    dict[str, str],
+    dict[str, float],
+    dict[str, dict[str, float]],
+    list[str],
+]:
+    emails: list[str] = []
+    social_links: dict[str, str] = {}
+    email_confidence: dict[str, float] = {}
+    social_confidence: dict[str, dict[str, float]] = {}
+    source_notes: list[str] = []
+
+    for entry in item.get("webResults") or []:
+        if not isinstance(entry, dict):
+            continue
+        url = str(entry.get("url") or "").strip()
+        title = str(entry.get("title") or "")
+        description = str(entry.get("description") or "")
+        displayed_url = str(entry.get("displayedUrl") or "")
+        evidence = " ".join((title, description, displayed_url, url))
+        source = f"apify_google_maps_web_result:{url or title or 'unknown'}"
+
+        for match in EMAIL_RE.findall(evidence):
+            email = normalize_email(match)
+            if not email:
+                continue
+            confidence = email_candidate_confidence(email, evidence, identity, url)
+            if not is_high_confidence(confidence):
+                logger.info(
+                    "Google web result rejected email for %s: %s score=%.3f source=%s",
+                    identity.business_name,
+                    email,
+                    confidence,
+                    source,
+                )
+                continue
+            emails = merge_unique(emails, [email])
+            email_confidence[email] = max(
+                email_confidence.get(email, 0.0),
+                confidence,
+            )
+            source_notes = merge_unique(
+                source_notes,
+                [f"email found via {source} confidence={confidence:.3f}: {email}"],
+            )
+            logger.info(
+                "Google web result found email for %s: %s score=%.3f source=%s",
+                identity.business_name,
+                email,
+                confidence,
+                source,
+            )
+
+        network = social_network_for_url(url)
+        if network not in SOCIAL_NETWORKS:
+            continue
+        confidence = social_candidate_confidence(url, evidence, identity)
+        if not is_high_confidence(confidence):
+            logger.info(
+                "Google web result rejected %s for %s: %s score=%.3f source=%s",
+                network,
+                identity.business_name,
+                url,
+                confidence,
+                source,
+            )
+            continue
+        existing = social_links.get(network)
+        existing_confidence = (
+            social_confidence.get(network, {}).get(existing, 0.0)
+            if existing
+            else 0.0
+        )
+        if not existing or confidence > existing_confidence:
+            social_links[network] = url
+        social_confidence.setdefault(network, {})[url] = confidence
+        source_notes = merge_unique(
+            source_notes,
+            [
+                f"{network} found via {source} confidence={confidence:.3f}: {url}"
+            ],
+        )
+        logger.info(
+            "Google web result found %s for %s: %s score=%.3f source=%s",
+            network,
+            identity.business_name,
+            url,
+            confidence,
+            source,
+        )
+
+    return (
+        emails,
+        social_links,
+        email_confidence,
+        social_confidence,
+        source_notes,
+    )
 
 
 def _flatten_candidate_values(value: Any) -> list[str]:

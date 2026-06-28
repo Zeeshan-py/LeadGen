@@ -76,6 +76,7 @@ export function syncEmailStatuses() {
 export function startGeneration(payload: {
   continent: string;
   country: string;
+  city: string;
   business_type: string;
   website_mode: string;
   max_leads: number;
