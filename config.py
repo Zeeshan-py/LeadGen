@@ -15,7 +15,7 @@ class Settings:
     apify_actor_id: str
     spreadsheet_id: str
     sheet_name: str
-    service_account_file: Path
+    service_account_json: str
     coverage_file: Path
     anthropic_api_key: str
     fetch_timeout_seconds: int
@@ -28,9 +28,7 @@ def load_settings() -> Settings:
         apify_actor_id=os.environ.get("APIFY_ACTOR_ID", "compass/crawler-google-places"),
         spreadsheet_id=require_env("GOOGLE_SHEETS_SPREADSHEET_ID"),
         sheet_name=os.environ.get("GOOGLE_SHEETS_SHEET_NAME", "MossLeads"),
-        service_account_file=Path(
-            os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE", "./service-account.json")
-        ),
+        service_account_json=os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON", ""),
         coverage_file=Path(
             os.environ.get("LEAD_COVERAGE_FILE", "./coverage/canada_moss_coverage.json")
         ),

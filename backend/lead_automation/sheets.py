@@ -37,7 +37,6 @@ COLUMNS = [
 class SheetsLeadStore:
     def __init__(
         self,
-        service_account_file: str = "",
         spreadsheet_id: str = "",
         sheet_name: str = "",
         credentials: Credentials | None = None,
@@ -50,7 +49,7 @@ class SheetsLeadStore:
         elif service_account_info is not None:
             creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
         else:
-            creds = Credentials.from_service_account_file(service_account_file, scopes=SCOPES)
+            raise ValueError("Google Sheets credentials were not provided.")
         authorized_http = google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http(timeout=60))
         self._service = build("sheets", "v4", http=authorized_http, cache_discovery=False)
         self._rows_cache: list[list[str]] | None = None

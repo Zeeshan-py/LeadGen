@@ -18,11 +18,8 @@ from .config import Settings
 
 
 GOOGLE_CREDENTIALS_MISSING_MESSAGE = (
-    "Google Sheets credentials missing.\n"
-    "Either:\n"
-    "- place service-account.json in backend root\n"
-    "  OR\n"
-    "- set GOOGLE_SERVICE_ACCOUNT_JSON environment variable."
+    "Google Sheets is disabled because GOOGLE_SERVICE_ACCOUNT_JSON is missing. "
+    "Set it to the complete service account JSON object to enable Google Sheets."
 )
 
 
@@ -66,58 +63,50 @@ def build_sheets_store(settings: Settings) -> SheetsLeadStore:
 
 
 def load_google_credentials(settings: Settings) -> tuple[Credentials, str, dict[str, Any]]:
-    service_account_file = resolve_service_account_file(settings)
-    if service_account_file:
-        credentials = Credentials.from_service_account_file(str(service_account_file), scopes=SCOPES)
-        info = {"client_email": getattr(credentials, "service_account_email", "")}
-        return credentials, str(service_account_file), info
+    raw_credentials = settings.google_service_account_json.strip()
+    if not raw_credentials:
+        raise GoogleSheetsConfigError("missing_credentials", GOOGLE_CREDENTIALS_MISSING_MESSAGE)
 
-    if settings.google_service_account_json.strip():
-        try:
-            info = json.loads(settings.google_service_account_json)
-        except json.JSONDecodeError as exc:
-            raise GoogleSheetsConfigError(
-                "invalid_json",
-                "GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON. Paste the complete service account JSON object.",
-            ) from exc
-        try:
-            credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
-        except Exception as exc:
-            raise GoogleSheetsConfigError(
-                "invalid_credentials",
-                "GOOGLE_SERVICE_ACCOUNT_JSON could not be used as a Google service account credential.",
-            ) from exc
-        return credentials, "GOOGLE_SERVICE_ACCOUNT_JSON", info
+    try:
+        info = json.loads(raw_credentials)
+    except json.JSONDecodeError as exc:
+        raise GoogleSheetsConfigError(
+            "invalid_json",
+            "GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON. Paste the complete service account JSON object.",
+        ) from exc
+    if not isinstance(info, dict):
+        raise GoogleSheetsConfigError(
+            "invalid_json",
+            "GOOGLE_SERVICE_ACCOUNT_JSON must contain a JSON object.",
+        )
 
-    raise GoogleSheetsConfigError("missing_credentials", GOOGLE_CREDENTIALS_MISSING_MESSAGE)
-
-
-def resolve_service_account_file(settings: Settings) -> Path | None:
-    candidates: list[Path] = []
-    configured = settings.google_service_account_file
-    if configured:
-        candidates.append(configured)
-    candidates.extend(
-        [
-            Path("./service-account.json"),
-            Path("./backend/service-account.json"),
-            Path("../service-account.json"),
-        ]
-    )
-
-    seen: set[str] = set()
-    for candidate in candidates:
-        resolved = candidate if candidate.is_absolute() else Path.cwd() / candidate
-        key = str(resolved.resolve(strict=False)).lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        if resolved.exists() and resolved.is_file():
-            return resolved
-    return None
+    try:
+        credentials = Credentials.from_service_account_info(info, scopes=SCOPES)
+    except (TypeError, ValueError) as exc:
+        raise GoogleSheetsConfigError(
+            "invalid_credentials",
+            "GOOGLE_SERVICE_ACCOUNT_JSON could not be used as a Google service account credential.",
+        ) from exc
+    return credentials, "GOOGLE_SERVICE_ACCOUNT_JSON", info
 
 
 def _validate_google_sheets(settings: Settings, logger: logging.Logger) -> GoogleSheetsValidation:
+    if not settings.google_service_account_json.strip():
+        logger.warning(
+            "Google Sheets configuration error [missing_credentials]: %s",
+            GOOGLE_CREDENTIALS_MISSING_MESSAGE,
+        )
+        return GoogleSheetsValidation(
+            status="error",
+            google_sheets=False,
+            spreadsheet_access=False,
+            code="missing_credentials",
+            message=GOOGLE_CREDENTIALS_MISSING_MESSAGE,
+            spreadsheet_id_configured=bool(
+                settings.google_sheets_spreadsheet_id.strip()
+            ),
+        )
+
     if not settings.google_sheets_spreadsheet_id.strip():
         return GoogleSheetsValidation(
             status="error",

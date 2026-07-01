@@ -33,10 +33,6 @@ class Settings(BaseSettings):
 
     google_sheets_spreadsheet_id: str = Field(default="", validation_alias="GOOGLE_SHEETS_SPREADSHEET_ID")
     google_sheets_sheet_name: str = Field(default="LeadForgeLeads", validation_alias="GOOGLE_SHEETS_SHEET_NAME")
-    google_service_account_file: Path = Field(
-        default=Path("./service-account.json"),
-        validation_alias="GOOGLE_SERVICE_ACCOUNT_FILE",
-    )
     google_service_account_json: str = Field(default="", validation_alias="GOOGLE_SERVICE_ACCOUNT_JSON")
 
     gmail_client_id: str = Field(default="", validation_alias="GMAIL_CLIENT_ID")

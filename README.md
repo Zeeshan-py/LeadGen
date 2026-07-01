@@ -32,7 +32,7 @@ Required for lead generation:
 - `APIFY_API_TOKEN`
 - `GEMINI_API_KEY`
 - `GOOGLE_SHEETS_SPREADSHEET_ID`
-- `GOOGLE_SERVICE_ACCOUNT_FILE` or `GOOGLE_SERVICE_ACCOUNT_JSON`
+- `GOOGLE_SERVICE_ACCOUNT_JSON`
 
 Required for Gmail sending:
 
@@ -51,27 +51,10 @@ The Settings page can store runtime overrides in PostgreSQL. Environment variabl
 
 ### Google Sheets Credentials
 
-LeadForge supports Google Sheets service account credentials in two ways.
+LeadForge reads Google Sheets credentials only from the environment, so no
+credential file is needed in Railway or Docker:
 
-Local file setup:
-
-1. Download the service account JSON from Google Cloud.
-2. Place it at one of these paths:
-   - `backend/service-account.json`
-   - `service-account.json`
-3. Set:
-
-```powershell
-GOOGLE_SERVICE_ACCOUNT_FILE=./service-account.json
-GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
-```
-
-Cloud setup for Railway, Docker, or any host without file uploads:
-
-1. Copy the full service account JSON.
-2. Store it as a single environment variable:
-
-```powershell
+```dotenv
 GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
 GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
 ```
@@ -81,6 +64,17 @@ Share the target spreadsheet with the service account `client_email` as an edito
 ```text
 GET /health/google
 ```
+
+If `GOOGLE_SERVICE_ACCOUNT_JSON` is missing or invalid, the application logs a
+clear warning and continues with PostgreSQL storage while Google Sheets remains
+disabled.
+
+### Railway
+
+Deploy the root `Dockerfile`, add a Railway PostgreSQL service, and configure
+the application variables from `.env.example`. Set
+`GOOGLE_SERVICE_ACCOUNT_JSON` to the complete service account JSON object as a
+single environment variable. Do not upload or mount `service-account.json`.
 
 The Settings page also includes a Google Sheets Status card and a Test Google Sheets Connection button.
 
