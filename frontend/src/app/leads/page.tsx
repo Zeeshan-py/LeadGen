@@ -35,9 +35,9 @@ import {
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { csvExportUrl, getLeads, updateLead } from "@/lib/api";
+import { csvExportUrl, getCampaigns, getLeads, updateLead } from "@/lib/api";
 import { businessTypes, continents, countriesByContinent } from "@/lib/markets";
-import type { Lead } from "@/lib/types";
+import type { Campaign, Lead } from "@/lib/types";
 
 const socialPlatforms = [
   { key: "facebook", label: "Facebook" },
@@ -50,9 +50,11 @@ const socialPlatforms = [
 
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search);
   const [scope, setScope] = useState("latest");
+  const [campaignId, setCampaignId] = useState("");
   const [outreachStatus, setOutreachStatus] = useState("all");
   const [country, setCountry] = useState("all");
   const [businessType, setBusinessType] = useState("all");
@@ -62,14 +64,30 @@ export default function LeadsPage() {
   const [editing, setEditing] = useState<Lead | null>(null);
 
   useEffect(() => {
+    getCampaigns().then(setCampaigns).catch((error) => toast.error(error.message));
+
+    const campaignFromUrl = new URLSearchParams(window.location.search).get("campaign_id");
+    if (campaignFromUrl) {
+      setCampaignId(campaignFromUrl);
+      setScope("all");
+    }
+  }, []);
+
+  const leadParams = useMemo(() => {
     const params: Record<string, string> = { sort, scope };
+    if (campaignId) params.campaign_id = campaignId;
     if (deferredSearch) params.search = deferredSearch;
     if (outreachStatus !== "all") params.outreach_status = outreachStatus;
     if (country !== "all") params.country = country;
     if (businessType !== "all") params.business_type = businessType;
     if (contact !== "all") params.contact = contact;
-    getLeads(params).then(setLeads).catch((error) => toast.error(error.message));
-  }, [deferredSearch, outreachStatus, sort, scope, country, businessType, contact]);
+    return params;
+  }, [businessType, campaignId, contact, country, deferredSearch, outreachStatus, scope, sort]);
+
+  useEffect(() => {
+    setSelected(new Set());
+    getLeads(leadParams).then(setLeads).catch((error) => toast.error(error.message));
+  }, [leadParams]);
 
   const selectedLeads = useMemo(() => leads.filter((lead) => selected.has(lead.id)), [leads, selected]);
 
@@ -88,7 +106,7 @@ export default function LeadsPage() {
   async function bulkStatus(nextStatus: string) {
     await Promise.all(selectedLeads.map((lead) => updateLead(lead.id, { lead_status: nextStatus })));
     setSelected(new Set());
-    const refreshed = await getLeads({ sort, scope });
+    const refreshed = await getLeads(leadParams);
     setLeads(refreshed);
     toast.success("Bulk action applied");
   }
@@ -104,8 +122,11 @@ export default function LeadsPage() {
             <Button
               key={value}
               size="sm"
-              variant={scope === value ? "default" : "ghost"}
-              onClick={() => setScope(value)}
+              variant={!campaignId && scope === value ? "default" : "ghost"}
+              onClick={() => {
+                setCampaignId("");
+                setScope(value);
+              }}
             >
               {label}
             </Button>
@@ -117,6 +138,28 @@ export default function LeadsPage() {
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search leads, websites, emails, cities..." className="pl-9" />
             </div>
+            <Select
+              value={campaignId || "all"}
+              onValueChange={(value) => {
+                const nextCampaignId = value === "all" ? "" : value;
+                setCampaignId(nextCampaignId);
+                if (nextCampaignId) setScope("all");
+              }}
+            >
+              <SelectTrigger className="w-full min-w-0 overflow-hidden">
+                <SelectValue className="min-w-0 flex-1 truncate" placeholder="Campaign" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="all">All Campaigns</SelectItem>
+                  {campaigns.map((campaign) => (
+                    <SelectItem key={campaign.id} value={campaign.id}>
+                      {campaign.name}
+                    </SelectItem>
+                  ))}
+                </SelectGroup>
+              </SelectContent>
+            </Select>
             <Select value={country} onValueChange={setCountry}>
               <SelectTrigger><SelectValue placeholder="Country" /></SelectTrigger>
               <SelectContent>
@@ -192,7 +235,7 @@ export default function LeadsPage() {
               </DropdownMenuContent>
             </DropdownMenu>
             <Button asChild>
-              <a href={csvExportUrl(scope)}>
+              <a href={csvExportUrl({ scope, campaignId })}>
                 <Download data-icon="inline-start" />
                 Export CSV
               </a>

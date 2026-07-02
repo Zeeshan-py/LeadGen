@@ -6,6 +6,7 @@ import {
   BarChart3,
   Bot,
   BrainCircuit,
+  ContactRound,
   Gauge,
   Home,
   Layers3,
@@ -38,6 +39,7 @@ const nav = [
   { href: "/", label: "Dashboard", icon: Home },
   { href: "/lead-generator", label: "Lead Generator", icon: Sparkles },
   { href: "/leads", label: "Leads", icon: Users },
+  { href: "/crm", label: "CRM", icon: ContactRound },
   { href: "/campaigns", label: "Campaigns", icon: Layers3 },
   { href: "/outreach", label: "Outreach", icon: Mail },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
@@ -46,7 +48,8 @@ const nav = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const current = nav.find((item) => item.href === pathname) ?? nav[0];
+  const normalizedPath = pathname === "/" ? pathname : pathname.replace(/\/+$/, "");
+  const current = nav.find((item) => item.href === normalizedPath) ?? nav[0];
 
   return (
     <SidebarProvider>
@@ -68,7 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <SidebarMenu>
                 {nav.map((item) => {
                   const Icon = item.icon;
-                  const active = pathname === item.href;
+                  const active = normalizedPath === item.href;
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton asChild tooltip={item.label} isActive={active}>

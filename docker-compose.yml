@@ -1,52 +1,60 @@
+name: leadgen
+
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: leadforge
-      POSTGRES_PASSWORD: leadforge
-      POSTGRES_DB: leadforge
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: leadgen
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: leadgen
     volumes:
-      - leadforge_postgres:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+      - leadgen_postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U leadforge -d leadforge"]
+      test: ["CMD-SHELL", "pg_isready -U leadgen -d leadgen"]
       interval: 5s
       timeout: 5s
       retries: 20
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  backend:
+  app:
+    image: zeeshanpy/leadgen:${IMAGE_TAG:-latest}
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ""
+    restart: unless-stopped
+    init: true
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+psycopg://leadforge:leadforge@postgres:5432/leadforge
-      FRONTEND_ORIGIN: http://localhost:3000
-      PUBLIC_BACKEND_URL: http://localhost:8000
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg://leadgen:${POSTGRES_PASSWORD}@postgres:5432/leadgen
+      FRONTEND_ORIGIN: ${APP_URL:-http://localhost:8000}
+      PUBLIC_BACKEND_URL: ${APP_URL:-http://localhost:8000}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      WEB_CONCURRENCY: "1"
     ports:
-      - "8000:8000"
+      - "${APP_PORT:-8000}:8000"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - leadforge_screenshots:/app/storage/screenshots
-
-  frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-      args:
-        NEXT_PUBLIC_API_URL: http://localhost:8000
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
-    ports:
-      - "3000:3000"
-    depends_on:
-      - backend
+      - leadgen_screenshots:/app/storage/screenshots
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
-  leadforge_postgres:
-  leadforge_screenshots:
+  leadgen_postgres:
+  leadgen_screenshots:

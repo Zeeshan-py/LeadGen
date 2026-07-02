@@ -8,6 +8,7 @@ import { PipelineProgress } from "@/components/pipeline-progress";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -21,13 +22,11 @@ import {
   businessTypes,
   continents,
   countriesByContinent,
-  getCitiesForCountry,
   type Continent,
 } from "@/lib/markets";
 import type { GenerationJob } from "@/lib/types";
 
 const leadLimits = [10, 25, 50, 100, 250, 500];
-const allCitiesValue = "__all_cities__";
 const lastGenerationJobKey = "leadforge.lastGenerationJobId";
 const terminalStatuses = new Set(["completed", "failed"]);
 
@@ -46,8 +45,6 @@ export default function LeadGeneratorPage() {
   });
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [running, setRunning] = useState(false);
-  const [cities, setCities] = useState<string[]>([]);
-  const [citiesLoading, setCitiesLoading] = useState(true);
   const sourceRef = useRef<EventSource | null>(null);
   const countries = countriesByContinent[form.continent];
 
@@ -60,31 +57,6 @@ export default function LeadGeneratorPage() {
     sourceRef.current?.close();
     sourceRef.current = null;
   }, []);
-
-  useEffect(() => {
-    let ignore = false;
-    setCitiesLoading(true);
-    getCitiesForCountry(form.country)
-      .then((items) => {
-        if (!ignore) {
-          setCities(items);
-        }
-      })
-      .catch((error) => {
-        if (!ignore) {
-          setCities([]);
-          toast.error(error instanceof Error ? error.message : "Could not load cities");
-        }
-      })
-      .finally(() => {
-        if (!ignore) {
-          setCitiesLoading(false);
-        }
-      });
-    return () => {
-      ignore = true;
-    };
-  }, [form.country]);
 
   const connectToJob = useCallback(
     (jobId: string) => {
@@ -225,26 +197,12 @@ export default function LeadGeneratorPage() {
             </Field>
             <Field>
               <FieldLabel htmlFor="city">City</FieldLabel>
-              <Select
-                value={form.city || allCitiesValue}
-                onValueChange={(city) => setForm((prev) => ({
-                  ...prev,
-                  city: city === allCitiesValue ? "" : city,
-                }))}
-                disabled={citiesLoading}
-              >
-                <SelectTrigger id="city">
-                  <SelectValue placeholder={citiesLoading ? "Loading cities..." : "All cities"} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectItem value={allCitiesValue}>All cities</SelectItem>
-                    {cities.map((city) => (
-                      <SelectItem key={city} value={city}>{city}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+              <Input
+                id="city"
+                value={form.city}
+                onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))}
+                placeholder="Optional, e.g. Dallas"
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="business_type">Business Type</FieldLabel>

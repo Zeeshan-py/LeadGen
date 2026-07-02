@@ -1,6 +1,18 @@
-import type { Analytics, Campaign, GenerationJob, GoogleSheetsHealth, Lead, Outreach } from "@/lib/types";
+import type {
+  Analytics,
+  Campaign,
+  CrmLeadDetail,
+  CrmLeadList,
+  CrmUser,
+  GenerationJob,
+  GoogleSheetsHealth,
+  Lead,
+  Outreach,
+} from "@/lib/types";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NODE_ENV === "production" ? "" : "http://localhost:8000");
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
@@ -114,8 +126,56 @@ export function saveSettings(payload: Record<string, unknown>) {
   });
 }
 
-export function csvExportUrl(scope = "latest") {
-  return `${API_URL}/get-leads/export.csv?scope=${encodeURIComponent(scope)}`;
+export function csvExportUrl({
+  scope = "latest",
+  campaignId = "",
+}: {
+  scope?: string;
+  campaignId?: string;
+} = {}) {
+  const params = new URLSearchParams({ scope });
+  if (campaignId) params.set("campaign_id", campaignId);
+  return `${API_URL}/get-leads/export.csv?${params.toString()}`;
+}
+
+export function getCrmLeads(params?: Record<string, string>) {
+  const search = new URLSearchParams(params).toString();
+  return request<CrmLeadList>(`/crm/leads${search ? `?${search}` : ""}`);
+}
+
+export function getCrmLead(id: string) {
+  return request<CrmLeadDetail>(`/crm/leads/${id}`);
+}
+
+export function updateCrmLead(id: string, payload: Record<string, unknown>) {
+  return request<CrmLeadDetail>(`/crm/leads/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function addCrmNote(id: string, body: string) {
+  return request<CrmLeadDetail>(`/crm/leads/${id}/notes`, {
+    method: "POST",
+    body: JSON.stringify({ body }),
+  });
+}
+
+export function updateCrmTags(id: string, tags: string[]) {
+  return request<CrmLeadDetail>(`/crm/leads/${id}/tags`, {
+    method: "PUT",
+    body: JSON.stringify({ tags }),
+  });
+}
+
+export function getCrmUsers() {
+  return request<CrmUser[]>("/crm/users");
+}
+
+export function syncCrmGmail(id: string) {
+  return request<CrmLeadDetail>(`/crm/leads/${id}/sync-gmail`, {
+    method: "POST",
+  });
 }
 
 export type { GenerationJob };

@@ -1,9 +1,20 @@
-FROM python:3.13-slim
+FROM node:22-alpine AS frontend-builder
+
+WORKDIR /build
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend ./
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+RUN npm run build
+
+FROM python:3.13-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright \
+    FRONTEND_STATIC_DIR=/app/frontend
 
 WORKDIR /app
 
@@ -17,6 +28,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
     && rm -rf /var/lib/apt/lists/*
 
 COPY backend ./
+COPY --from=frontend-builder /build/out ./frontend
 
 RUN chmod +x /app/entrypoint.sh \
     && groupadd --system leadgen \
@@ -27,6 +39,7 @@ RUN chmod +x /app/entrypoint.sh \
 USER leadgen
 
 EXPOSE 8000
+
 HEALTHCHECK --interval=30s --timeout=5s --start-period=45s --retries=3 \
     CMD curl --fail --silent http://127.0.0.1:${PORT:-8000}/health/ready || exit 1
 

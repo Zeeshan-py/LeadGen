@@ -10,32 +10,6 @@ export const countriesByContinent = {
 export type Continent = keyof typeof countriesByContinent;
 export const continents = Object.keys(countriesByContinent) as Continent[];
 
-const cityCache = new Map<string, string[]>();
-const cityCollator = new Intl.Collator("en", { sensitivity: "base" });
-
-export async function getCitiesForCountry(countryName: string): Promise<string[]> {
-  const cached = cityCache.get(countryName);
-  if (cached) {
-    return cached;
-  }
-
-  const { City, Country } = await import("country-state-city");
-  const country = Country.getAllCountries().find((item) => item.name === countryName);
-  if (!country) {
-    return [];
-  }
-
-  const cities = Array.from(
-    new Set(
-      (City.getCitiesOfCountry(country.isoCode) ?? [])
-        .map((city) => city.name.trim())
-        .filter(Boolean),
-    ),
-  ).sort(cityCollator.compare);
-  cityCache.set(countryName, cities);
-  return cities;
-}
-
 export const businessTypes = [
   "Accountants", "Auto Repair", "Construction", "Dentists", "Electricians",
   "Gyms", "HVAC", "Law Firms", "Marketing Agencies", "Medical Clinics",

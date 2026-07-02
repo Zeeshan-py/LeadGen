@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -154,3 +154,143 @@ class AnalyticsResponse(BaseModel):
     top_cities: list[dict[str, Any]]
     top_niches: list[dict[str, Any]]
     recent_activity: list[dict[str, Any]]
+
+
+CrmStage = Literal[
+    "new",
+    "qualified",
+    "email_generated",
+    "email_sent",
+    "opened",
+    "replied",
+    "interested",
+    "meeting_scheduled",
+    "won",
+    "lost",
+    "archived",
+]
+
+
+class CrmUserRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    email: str
+    initials: str
+    is_active: bool
+
+
+class CrmUserCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    email: str = Field(min_length=3, max_length=320)
+    initials: str = Field(default="", max_length=8)
+
+
+class CrmTagRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    name: str
+    color: str
+
+
+class CrmLeadSummary(BaseModel):
+    id: str
+    campaign_id: str | None
+    business_name: str
+    contact_name: str
+    email: str
+    phone: str
+    website: str
+    address: str
+    city: str
+    state: str
+    country: str
+    industry: str
+    notes: str
+    crm_stage: CrmStage
+    last_contacted_at: datetime | None
+    next_follow_up_at: datetime | None
+    assigned_user: CrmUserRead | None
+    tags: list[CrmTagRead]
+    created_at: datetime
+    updated_at: datetime
+
+
+class CrmLeadListResponse(BaseModel):
+    items: list[CrmLeadSummary]
+    total: int
+    stage_counts: dict[str, int]
+
+
+class CrmNoteRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    body: str
+    created_by: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class CrmActivityRead(BaseModel):
+    id: str
+    event_type: str
+    title: str
+    description: str
+    actor: str
+    metadata: dict[str, Any]
+    created_at: datetime
+
+
+class CrmEmailMessageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    outreach_id: str | None
+    gmail_message_id: str
+    gmail_thread_id: str
+    direction: str
+    from_email: str
+    to_email: str
+    subject: str
+    body_text: str
+    body_html: str
+    snippet: str
+    message_at: datetime
+
+
+class CrmLeadDetail(CrmLeadSummary):
+    outreach_history: list[OutreachRead]
+    email_messages: list[CrmEmailMessageRead]
+    note_history: list[CrmNoteRead]
+    activity: list[CrmActivityRead]
+
+
+class CrmLeadUpdate(BaseModel):
+    business_name: str | None = Field(default=None, max_length=240)
+    contact_name: str | None = Field(default=None, max_length=180)
+    email: str | None = Field(default=None, max_length=320)
+    phone: str | None = Field(default=None, max_length=80)
+    website: str | None = Field(default=None, max_length=500)
+    address: str | None = Field(default=None, max_length=500)
+    industry: str | None = Field(default=None, max_length=160)
+    crm_stage: CrmStage | None = None
+    assigned_user_id: str | None = None
+    next_follow_up_at: datetime | None = None
+
+
+class CrmNoteCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=10_000)
+    created_by: str = Field(default="LeadForge user", max_length=160)
+
+
+class CrmTagsUpdate(BaseModel):
+    tags: list[str] = Field(max_length=30)
+
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, value: list[str]) -> list[str]:
+        cleaned = [" ".join(item.strip().split())[:80] for item in value]
+        return list(dict.fromkeys(item for item in cleaned if item))

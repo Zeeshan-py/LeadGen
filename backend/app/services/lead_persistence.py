@@ -11,6 +11,7 @@ from lead_automation.models import PlaceLead
 from ..ai import OutreachDrafts, WebsiteAnalysis
 from ..models import Campaign, Lead, Outreach
 from ..schemas import GenerateLeadRequest
+from .crm import change_crm_stage, record_crm_activity, replace_lead_tags
 from .events import record_event
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,9 @@ class LeadPersistenceService:
         screenshot_url: str,
         social_pages: list[str],
     ) -> Lead:
+        is_new = self.db.scalar(
+            select(Lead.id).where(Lead.dedupe_key == lead.dedupe_key())
+        ) is None
         db_lead = self._upsert_lead(
             lead,
             payload,
@@ -38,7 +42,38 @@ class LeadPersistenceService:
             screenshot_url,
             social_pages,
         )
+        replace_lead_tags(
+            self.db,
+            db_lead,
+            [payload.business_type, payload.country, *(db_lead.tags or [])],
+            actor="LeadForge AI",
+        )
         self._upsert_outreach(db_lead, campaign, outreach)
+        if is_new:
+            record_crm_activity(
+                self.db,
+                lead_id=db_lead.id,
+                event_type="lead_generated",
+                title="Lead generated",
+                description=db_lead.business_name,
+                actor="LeadForge AI",
+                metadata={"campaign_id": campaign.id},
+            )
+        if db_lead.crm_stage not in {"won", "lost", "archived"}:
+            change_crm_stage(
+                self.db,
+                db_lead,
+                "email_generated",
+                actor="LeadForge AI",
+            )
+        record_crm_activity(
+            self.db,
+            lead_id=db_lead.id,
+            event_type="email_generated",
+            title="Email generated",
+            description=outreach.subject_line,
+            actor="LeadForge AI",
+        )
         record_event(
             self.db,
             "lead_saved",
@@ -78,6 +113,7 @@ class LeadPersistenceService:
         )
         row.campaign_id = campaign.id
         row.business_name = lead.business_name
+        row.contact_name = lead.owner_or_contact
         row.website = lead.website
         row.google_maps_url = lead.google_maps_url
         row.email = lead.primary_email()
@@ -92,7 +128,9 @@ class LeadPersistenceService:
         row.website_problems = analysis.website_problems
         row.website_summary = analysis.website_summary
         row.improvement_suggestions = analysis.improvement_suggestions
-        row.lead_status = "qualified"
+        if existing is None:
+            row.lead_status = "qualified"
+            row.crm_stage = "qualified"
         row.outreach_status = row.outreach_status or "not_started"
         existing_tags = list(row.tags or [])
         row.tags = list(dict.fromkeys([payload.business_type, payload.country, *existing_tags]))

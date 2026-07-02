@@ -8,7 +8,8 @@ LeadForge AI is a private internal lead generation command center. It wraps the 
 - `backend/` - FastAPI API wrapping the existing Python automation in `backend/lead_automation`
 - `database/schema.sql` - PostgreSQL schema for leads, campaigns, outreach, analytics, settings, and jobs
 - `scripts/dev.ps1` - local helper for starting Postgres, backend, and frontend
-- `docker-compose.yml` - local full-stack Docker setup
+- `Dockerfile` - production image containing the exported dashboard and API
+- `docker-compose.yml` - production-like app and PostgreSQL stack
 
 ## Core Flow
 
@@ -17,6 +18,24 @@ LeadForge AI is a private internal lead generation command center. It wraps the 
 3. The frontend subscribes to `/generate-leads/{job_id}/events` for live pipeline progress.
 4. The backend uses Apify Google Maps, website scraping, optional existing Claude contact extraction, Gemini website analysis/outreach, Google Sheets sync, and PostgreSQL upsert.
 5. Leads, campaigns, outreach drafts, analytics, and settings are available from the dashboard.
+
+## CRM
+
+The built-in CRM is available at `/crm` and keeps lead management inside
+LeadForge:
+
+- Kanban and table views across New, Qualified, Email Generated, Email Sent,
+  Opened, Replied, Interested, Meeting Scheduled, Won, Lost, and Archived.
+- Search and filters for status, country, industry, assigned user, creation
+  date, and last-contacted date.
+- Relational PostgreSQL records for CRM users, tags, notes, activity events,
+  and Gmail messages.
+- Lead detail sheets with company/contact details, AI draft history, full Gmail
+  conversations, notes, follow-up scheduling, and an immutable activity
+  timeline.
+- Automatic Gmail reply synchronization using
+  `GMAIL_REPLY_SYNC_INTERVAL_SECONDS`, with Gmail message/thread IDs persisted
+  and lead stages advanced when messages are sent, opened, or replied to.
 
 ## Environment
 
@@ -109,27 +128,69 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ## Docker
 
-```powershell
-docker compose up --build
+Set at least these values in `.env`:
+
+```dotenv
+POSTGRES_PASSWORD=use-a-long-url-safe-random-password
+BASIC_AUTH_USERNAME=admin
+BASIC_AUTH_PASSWORD=use-another-long-random-password
+APP_URL=http://localhost:8000
 ```
 
-Frontend runs on `http://localhost:3000`; backend runs on `http://localhost:8000`.
+Then build and start the complete application:
+
+```powershell
+docker compose up -d --build
+docker compose ps
+```
+
+Open `http://localhost:8000`. The browser will request the Basic Auth
+credentials from `.env`. PostgreSQL is private to the Compose network and is
+persisted in the `leadgen_postgres` volume.
+
+The container runs `alembic upgrade head` before starting the API. Readiness is
+available at `GET /health/ready`; liveness is available at `GET /health/live`.
+
+### Docker Hub
+
+Build and push the requested image manually:
+
+```powershell
+docker build -t zeeshanpy/leadgen:latest .
+docker login --username zeeshanpy
+docker push zeeshanpy/leadgen:latest
+```
+
+GitHub Actions can publish the same image. Add a repository secret named
+`DOCKERHUB_TOKEN`, then run the **Publish Docker image** workflow or push a
+version tag such as `v1.0.0`.
 
 ## Deployment
 
-Railway backend:
+For a Linux server with Docker:
 
-- Deploy `backend/Dockerfile`.
-- Set `DATABASE_URL` to Railway Postgres.
-- Add the API, Google, Gmail, and Apify environment variables.
-- Set `GOOGLE_SERVICE_ACCOUNT_JSON` to the full service account JSON so Railway works without uploading a JSON file.
-- Set `PUBLIC_BACKEND_URL` to the Railway backend URL.
-- Set `FRONTEND_ORIGIN` to the Vercel frontend URL.
+```bash
+git clone https://github.com/Zeeshan-py/LeadGen.git
+cd LeadGen
+cp .env.example .env
+# Edit .env with production credentials and an https APP_URL.
+docker compose pull
+docker compose up -d
+```
 
-Vercel frontend:
+Place the app behind an HTTPS reverse proxy or a platform load balancer. Set
+`FORWARDED_ALLOW_IPS` to the trusted proxy address/range, not `*`, and set
+`APP_URL`, `FRONTEND_ORIGIN`, and `PUBLIC_BACKEND_URL` to the public HTTPS URL.
 
-- Deploy `frontend/`.
-- Set `NEXT_PUBLIC_API_URL` to the Railway backend URL.
+Keep `WEB_CONCURRENCY=1`: generation jobs and SSE delivery currently use
+in-process state. Scaling to multiple replicas requires an external queue and
+shared event transport.
+
+Back up PostgreSQL regularly:
+
+```bash
+docker compose exec -T postgres pg_dump -U leadgen -d leadgen -Fc > leadgen.dump
+```
 
 ## API
 
@@ -150,6 +211,14 @@ Vercel frontend:
 - `GET /settings`
 - `PUT /settings`
 - `GET /health/google`
+- `GET /crm/leads`
+- `GET /crm/leads/{lead_id}`
+- `PATCH /crm/leads/{lead_id}`
+- `POST /crm/leads/{lead_id}/notes`
+- `PUT /crm/leads/{lead_id}/tags`
+- `POST /crm/leads/{lead_id}/sync-gmail`
+- `GET /crm/users`
+- `POST /crm/users`
 
 ## Existing Automation
 

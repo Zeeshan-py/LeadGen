@@ -1,123 +1,83 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Layers3, Plus } from "lucide-react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { createCampaign, getCampaigns } from "@/lib/api";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { csvExportUrl, getCampaigns } from "@/lib/api";
 import type { Campaign } from "@/lib/types";
 
 export default function CampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [form, setForm] = useState({
-    name: "Dallas Dentists",
-    city: "Dallas",
-    state: "TX",
-    country: "United States",
-    business_type: "Dentists",
-    max_leads: 50,
-  });
 
   useEffect(() => {
     getCampaigns().then(setCampaigns).catch((error) => toast.error(error.message));
   }, []);
 
-  async function onCreate() {
-    try {
-      const campaign = await createCampaign(form);
-      setCampaigns((prev) => [campaign, ...prev]);
-      toast.success("Campaign created");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Campaign creation failed");
-    }
-  }
+  const enrichedCampaigns = campaigns.filter((campaign) => campaign.leads_generated > 0);
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[420px_1fr]">
-      <Card className="glass-panel h-fit">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Layers3 className="size-5 text-primary" />
-            Create Campaign
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="campaign-name">Campaign Name</FieldLabel>
-              <Input id="campaign-name" value={form.name} onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="campaign-business">Business Type</FieldLabel>
-              <Input id="campaign-business" value={form.business_type} onChange={(event) => setForm((prev) => ({ ...prev, business_type: event.target.value }))} />
-            </Field>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="campaign-city">City</FieldLabel>
-                <Input id="campaign-city" value={form.city} onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))} />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="campaign-state">State</FieldLabel>
-                <Input id="campaign-state" value={form.state} onChange={(event) => setForm((prev) => ({ ...prev, state: event.target.value }))} />
-              </Field>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="campaign-country">Country</FieldLabel>
-              <Input id="campaign-country" value={form.country} onChange={(event) => setForm((prev) => ({ ...prev, country: event.target.value }))} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="campaign-max">Max Leads</FieldLabel>
-              <Input id="campaign-max" type="number" min={1} max={500} value={form.max_leads} onChange={(event) => setForm((prev) => ({ ...prev, max_leads: Number(event.target.value) }))} />
-            </Field>
-            <Button onClick={onCreate}>
-              <Plus data-icon="inline-start" />
-              Create Campaign
-            </Button>
-          </FieldGroup>
-        </CardContent>
-      </Card>
+    <section className="flex flex-col gap-4" aria-labelledby="campaign-history-title">
+      <header>
+        <h2 id="campaign-history-title" className="text-lg font-semibold">Past Enriched Campaigns</h2>
+        <p className="text-sm text-muted-foreground">
+          {enrichedCampaigns.length} campaigns ready to export
+        </p>
+      </header>
 
-      <Card className="glass-panel overflow-hidden">
-        <CardHeader>
-          <CardTitle>Campaigns</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Campaign Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Leads Generated</TableHead>
-                <TableHead>Emails Sent</TableHead>
-                <TableHead>Replies</TableHead>
-                <TableHead>Location</TableHead>
-                <TableHead>Niche</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {campaigns.map((campaign) => (
-                <TableRow key={campaign.id}>
-                  <TableCell className="font-medium">{campaign.name}</TableCell>
-                  <TableCell>
+      {enrichedCampaigns.length ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {enrichedCampaigns.map((campaign) => {
+            const location = [campaign.city, campaign.state, campaign.country].filter(Boolean).join(", ");
+            return (
+              <Card key={campaign.id} className="gap-4 py-4">
+                <CardHeader className="gap-2 px-4">
+                  <div className="flex min-w-0 items-start justify-between gap-3">
+                    <CardTitle className="min-w-0 truncate text-base">{campaign.name}</CardTitle>
                     <StatusBadge value={campaign.status} />
-                  </TableCell>
-                  <TableCell>{campaign.leads_generated}</TableCell>
-                  <TableCell>{campaign.emails_sent}</TableCell>
-                  <TableCell>{campaign.replies}</TableCell>
-                  <TableCell>{[campaign.city, campaign.state, campaign.country].filter(Boolean).join(", ")}</TableCell>
-                  <TableCell>{campaign.business_type}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
+                  </div>
+                  <CardDescription className="truncate">{location || "All locations"}</CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 gap-3 px-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Leads</p>
+                    <p className="text-lg font-semibold">{campaign.leads_generated}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-muted-foreground">Business type</p>
+                    <p className="truncate font-medium">{campaign.business_type}</p>
+                  </div>
+                </CardContent>
+                <CardFooter className="px-4">
+                  <Button asChild className="w-full">
+                    <a
+                      href={csvExportUrl({ scope: "all", campaignId: campaign.id })}
+                      download
+                    >
+                      <Download data-icon="inline-start" />
+                      Export {campaign.leads_generated} leads
+                    </a>
+                  </Button>
+                </CardFooter>
+              </Card>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+          Enriched campaigns will appear here after a successful lead generation run.
+        </p>
+      )}
+    </section>
   );
 }

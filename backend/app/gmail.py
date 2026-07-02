@@ -3,8 +3,10 @@ from __future__ import annotations
 import base64
 import html
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.utils import parseaddr
+from typing import Any
 
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
@@ -31,6 +33,21 @@ class GmailReplyMessage:
     message_id_header: str
     references_header: str
     from_email: str
+
+
+@dataclass(frozen=True)
+class GmailThreadMessage:
+    gmail_message_id: str
+    gmail_thread_id: str
+    message_id_header: str
+    references_header: str
+    from_email: str
+    to_email: str
+    subject: str
+    body_text: str
+    body_html: str
+    snippet: str
+    message_at: datetime
 
 
 class GmailConfigurationError(RuntimeError):
@@ -173,6 +190,44 @@ class GmailClient:
     def thread_has_reply(self, thread_id: str, sender_email: str, recipient_email: str) -> bool:
         return self.thread_reply_message(thread_id, sender_email, recipient_email) is not None
 
+    def thread_messages(self, thread_id: str) -> list[GmailThreadMessage]:
+        if not thread_id:
+            return []
+        thread = self.service.users().threads().get(
+            userId="me",
+            id=thread_id,
+            format="full",
+        ).execute()
+        messages: list[GmailThreadMessage] = []
+        for message in thread.get("messages", []):
+            payload = message.get("payload", {})
+            headers = payload.get("headers", [])
+            header_map = {
+                header.get("name", "").lower(): header.get("value", "")
+                for header in headers
+            }
+            body_text, body_html = _message_bodies(payload)
+            internal_date = int(message.get("internalDate", "0") or 0)
+            messages.append(
+                GmailThreadMessage(
+                    gmail_message_id=message.get("id", ""),
+                    gmail_thread_id=thread_id,
+                    message_id_header=header_map.get("message-id", ""),
+                    references_header=header_map.get("references", ""),
+                    from_email=_email_address(header_map.get("from", "")),
+                    to_email=_email_address(header_map.get("to", "")),
+                    subject=header_map.get("subject", ""),
+                    body_text=body_text,
+                    body_html=body_html,
+                    snippet=message.get("snippet", ""),
+                    message_at=datetime.fromtimestamp(
+                        internal_date / 1000,
+                        tz=timezone.utc,
+                    ),
+                )
+            )
+        return sorted(messages, key=lambda item: item.message_at)
+
     def thread_reply_message(
         self,
         thread_id: str,
@@ -215,3 +270,31 @@ def _valid_email(value: str) -> bool:
     address = _email_address(value)
     local, separator, domain = address.rpartition("@")
     return bool(separator and local and "." in domain and not domain.startswith("."))
+
+
+def _message_bodies(payload: dict[str, Any]) -> tuple[str, str]:
+    text_parts: list[str] = []
+    html_parts: list[str] = []
+
+    def visit(part: dict[str, Any]) -> None:
+        mime_type = str(part.get("mimeType", "")).lower()
+        data = part.get("body", {}).get("data", "")
+        if data:
+            decoded = _decode_body(data)
+            if mime_type == "text/plain":
+                text_parts.append(decoded)
+            elif mime_type == "text/html":
+                html_parts.append(decoded)
+        for child in part.get("parts", []) or []:
+            visit(child)
+
+    visit(payload)
+    return "\n".join(text_parts).strip(), "\n".join(html_parts).strip()
+
+
+def _decode_body(value: str) -> str:
+    padding = "=" * (-len(value) % 4)
+    try:
+        return base64.urlsafe_b64decode(value + padding).decode("utf-8", errors="replace")
+    except (ValueError, TypeError):
+        return ""

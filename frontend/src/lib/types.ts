@@ -114,3 +114,116 @@ export type GoogleSheetsHealth = {
   spreadsheet_id_configured: boolean;
   service_account_email: string;
 };
+
+export const crmStages = [
+  "new",
+  "qualified",
+  "email_generated",
+  "email_sent",
+  "opened",
+  "replied",
+  "interested",
+  "meeting_scheduled",
+  "won",
+  "lost",
+  "archived",
+] as const;
+
+export type CrmStage = (typeof crmStages)[number];
+
+export const crmStageLabels: Record<CrmStage, string> = {
+  new: "New",
+  qualified: "Qualified",
+  email_generated: "Email Generated",
+  email_sent: "Email Sent",
+  opened: "Opened",
+  replied: "Replied",
+  interested: "Interested",
+  meeting_scheduled: "Meeting Scheduled",
+  won: "Won",
+  lost: "Lost",
+  archived: "Archived",
+};
+
+export type CrmUser = {
+  id: string;
+  name: string;
+  email: string;
+  initials: string;
+  is_active: boolean;
+};
+
+export type CrmTag = {
+  id: string;
+  name: string;
+  color: string;
+};
+
+export type CrmLead = {
+  id: string;
+  campaign_id: string | null;
+  business_name: string;
+  contact_name: string;
+  email: string;
+  phone: string;
+  website: string;
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  industry: string;
+  notes: string;
+  crm_stage: CrmStage;
+  last_contacted_at: string | null;
+  next_follow_up_at: string | null;
+  assigned_user: CrmUser | null;
+  tags: CrmTag[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmNote = {
+  id: string;
+  body: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CrmActivity = {
+  id: string;
+  event_type: string;
+  title: string;
+  description: string;
+  actor: string;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+export type CrmEmailMessage = {
+  id: string;
+  outreach_id: string | null;
+  gmail_message_id: string;
+  gmail_thread_id: string;
+  direction: "sent" | "received";
+  from_email: string;
+  to_email: string;
+  subject: string;
+  body_text: string;
+  body_html: string;
+  snippet: string;
+  message_at: string;
+};
+
+export type CrmLeadDetail = CrmLead & {
+  outreach_history: Outreach[];
+  email_messages: CrmEmailMessage[];
+  note_history: CrmNote[];
+  activity: CrmActivity[];
+};
+
+export type CrmLeadList = {
+  items: CrmLead[];
+  total: number;
+  stage_counts: Record<CrmStage, number>;
+};

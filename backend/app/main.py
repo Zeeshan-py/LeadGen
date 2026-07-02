@@ -3,14 +3,16 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import csv
+import base64
 import json
 import logging
+import secrets
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from io import StringIO
 from typing import Any
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,11 +21,12 @@ from sqlalchemy.orm import Session, joinedload
 
 from .ai import GeminiLeadAI, WebsiteAnalysis
 from .config import get_settings
-from .database import SessionLocal, get_db, init_db
+from .crm import router as crm_router
+from .database import SessionLocal, check_db, get_db
 from .email_sync import sync_replied_outreach
 from .gmail import GmailClient, GmailConfigurationError, GmailSendError
 from .google_sheets import validate_google_sheets
-from .models import Analytics, Campaign, Lead, LeadGenerationJob, Outreach, Setting
+from .models import Analytics, Campaign, EmailMessage, Lead, LeadGenerationJob, Outreach, Setting
 from .runner import create_generation_job, get_job, get_job_snapshot, get_latest_job_snapshot, run_generation_job
 from .schemas import (
     AnalyticsResponse,
@@ -38,6 +41,7 @@ from .schemas import (
     SettingsPayload,
 )
 from .services.lead_analysis import LeadAnalysisService
+from .services.crm import change_crm_stage, mark_contacted, record_crm_activity
 from .settings_store import effective_settings
 
 settings = get_settings()
@@ -50,6 +54,7 @@ if not logging.getLogger().handlers:
 logging.getLogger("app").setLevel(logging.INFO)
 logging.getLogger("lead_automation").setLevel(logging.INFO)
 app = FastAPI(title="LeadForge AI API", version="1.0.0")
+app.include_router(crm_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,9 +68,38 @@ settings.screenshots_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static/screenshots", StaticFiles(directory=settings.screenshots_dir), name="screenshots")
 
 
+@app.middleware("http")
+async def require_production_auth(request: Request, call_next):
+    if settings.environment.lower() != "production" or request.url.path in {
+        "/health",
+        "/health/live",
+        "/health/ready",
+    }:
+        return await call_next(request)
+
+    authorization = request.headers.get("Authorization", "")
+    authenticated = False
+    if authorization.startswith("Basic "):
+        try:
+            decoded = base64.b64decode(authorization[6:], validate=True).decode("utf-8")
+            username, password = decoded.split(":", 1)
+            authenticated = secrets.compare_digest(
+                username, settings.basic_auth_username
+            ) and secrets.compare_digest(password, settings.basic_auth_password)
+        except (ValueError, UnicodeDecodeError):
+            authenticated = False
+
+    if not authenticated:
+        return Response(
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="LeadGen", charset="UTF-8"'},
+        )
+    return await call_next(request)
+
+
 @app.on_event("startup")
 async def on_startup() -> None:
-    init_db()
+    settings.validate_production()
     try:
         with SessionLocal() as db:
             validate_google_sheets(effective_settings(settings, db))
@@ -83,9 +117,20 @@ async def on_shutdown() -> None:
             await task
 
 
+@app.get("/health/live")
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "app": settings.app_name}
+
+
+@app.get("/health/ready")
+def readiness() -> dict[str, str]:
+    try:
+        check_db()
+    except Exception as exc:
+        logger.exception("Database readiness check failed")
+        raise HTTPException(status_code=503, detail="Database is unavailable") from exc
+    return {"status": "ready", "database": "ok"}
 
 
 @app.get("/health/google")
@@ -222,9 +267,12 @@ def update_lead(lead_id: str, payload: LeadUpdate, db: Session = Depends(get_db)
 def export_leads(
     db: Session = Depends(get_db),
     scope: str = Query(default="latest", pattern="^(latest|all)$"),
+    campaign_id: str = "",
 ) -> Response:
     query = select(Lead).order_by(desc(Lead.created_at))
-    if scope == "latest":
+    if campaign_id:
+        query = query.where(Lead.campaign_id == campaign_id)
+    elif scope == "latest":
         latest_job = db.scalar(
             select(LeadGenerationJob)
             .where(LeadGenerationJob.campaign_id.is_not(None))
@@ -343,6 +391,16 @@ def regenerate_outreach(lead_id: str, db: Session = Depends(get_db)) -> Outreach
         outreach.follow_up_1 = drafts.follow_up_1
         outreach.follow_up_2 = drafts.follow_up_2
         outreach.failed_reason = drafts.generation_error
+        if lead.crm_stage not in {"won", "lost", "archived"}:
+            change_crm_stage(db, lead, "email_generated", actor="LeadForge AI")
+        record_crm_activity(
+            db,
+            lead_id=lead.id,
+            event_type="email_generated",
+            title="Email generated",
+            description=outreach.subject_line,
+            actor="LeadForge AI",
+        )
         db.add(outreach)
         db.commit()
         db.refresh(outreach)
@@ -402,6 +460,39 @@ def send_email(payload: SendEmailRequest, db: Session = Depends(get_db)) -> Outr
         outreach.gmail_thread_id = sent.thread_id
         outreach.sent_at = datetime.now(timezone.utc)
         outreach.lead.outreach_status = "sent"
+        mark_contacted(outreach.lead, outreach.sent_at)
+        if outreach.lead.crm_stage not in {"won", "lost", "archived"}:
+            change_crm_stage(db, outreach.lead, "email_sent", actor="LeadForge AI")
+        event_type = "follow_up_sent" if payload.version.startswith("follow_up") else "email_sent"
+        event_title = "Follow-up sent" if event_type == "follow_up_sent" else "Email sent"
+        db.add(
+            EmailMessage(
+                lead_id=outreach.lead_id,
+                outreach_id=outreach.id,
+                gmail_message_id=sent.message_id,
+                gmail_thread_id=sent.thread_id,
+                direction="sent",
+                from_email=gmail.sender_email,
+                to_email=outreach.lead.email,
+                subject=subject,
+                body_text=body,
+                snippet=body[:240],
+                message_at=outreach.sent_at,
+            )
+        )
+        record_crm_activity(
+            db,
+            lead_id=outreach.lead_id,
+            event_type=event_type,
+            title=event_title,
+            description=subject,
+            actor="LeadForge user",
+            metadata={
+                "gmail_message_id": sent.message_id,
+                "gmail_thread_id": sent.thread_id,
+                "version": payload.version,
+            },
+        )
         if outreach.campaign:
             outreach.campaign.emails_sent += 1
         db.add(Analytics(event_type="email_sent", lead_id=outreach.lead_id, campaign_id=outreach.campaign_id))
@@ -437,6 +528,16 @@ def track_open(tracking_id: str, db: Session = Depends(get_db)) -> Response:
         outreach.status = "opened"
         outreach.opened_at = datetime.now(timezone.utc)
         outreach.lead.outreach_status = "opened"
+        if outreach.lead.crm_stage not in {"replied", "interested", "meeting_scheduled", "won", "lost", "archived"}:
+            change_crm_stage(db, outreach.lead, "opened", actor="Gmail tracking")
+        record_crm_activity(
+            db,
+            lead_id=outreach.lead_id,
+            event_type="email_opened",
+            title="Email opened",
+            actor="Gmail tracking",
+            metadata={"tracking_id": tracking_id},
+        )
         db.add(Analytics(event_type="email_opened", lead_id=outreach.lead_id, campaign_id=outreach.campaign_id))
         db.commit()
     pixel = base64_pixel()
@@ -560,4 +661,12 @@ def base64_pixel() -> bytes:
 
     return base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII="
+    )
+
+
+if settings.frontend_static_dir.is_dir():
+    app.mount(
+        "/",
+        StaticFiles(directory=settings.frontend_static_dir, html=True),
+        name="frontend",
     )

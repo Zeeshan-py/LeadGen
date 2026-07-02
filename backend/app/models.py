@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
@@ -25,7 +25,7 @@ class TimestampMixin:
 class Campaign(Base, TimestampMixin):
     __tablename__ = "campaigns"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(180), index=True)
     city: Mapped[str] = mapped_column(String(120), default="")
     state: Mapped[str] = mapped_column(String(120), default="")
@@ -42,14 +42,42 @@ class Campaign(Base, TimestampMixin):
     outreach: Mapped[list["Outreach"]] = relationship(back_populates="campaign")
 
 
+class CrmUser(Base, TimestampMixin):
+    __tablename__ = "crm_users"
+    __table_args__ = (UniqueConstraint("email", name="uq_crm_users_email"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(160), index=True)
+    email: Mapped[str] = mapped_column(String(320), default="", index=True)
+    initials: Mapped[str] = mapped_column(String(8), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+
+    assigned_leads: Mapped[list["Lead"]] = relationship(back_populates="assigned_user")
+
+
+class CrmTag(Base, TimestampMixin):
+    __tablename__ = "crm_tags"
+    __table_args__ = (UniqueConstraint("name", name="uq_crm_tags_name"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    name: Mapped[str] = mapped_column(String(80), index=True)
+    color: Mapped[str] = mapped_column(String(40), default="")
+
+    lead_links: Mapped[list["LeadTag"]] = relationship(
+        back_populates="tag",
+        cascade="all, delete-orphan",
+    )
+
+
 class Lead(Base, TimestampMixin):
     __tablename__ = "leads"
     __table_args__ = (UniqueConstraint("dedupe_key", name="uq_leads_dedupe_key"),)
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
     campaign_id: Mapped[str | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True, index=True)
     dedupe_key: Mapped[str] = mapped_column(String(255), index=True)
     business_name: Mapped[str] = mapped_column(String(240), index=True)
+    contact_name: Mapped[str] = mapped_column(String(180), default="", index=True)
     website: Mapped[str] = mapped_column(String(500), default="")
     google_maps_url: Mapped[str] = mapped_column(String(800), default="")
     email: Mapped[str] = mapped_column(String(320), default="", index=True)
@@ -65,7 +93,23 @@ class Lead(Base, TimestampMixin):
     website_summary: Mapped[str] = mapped_column(Text, default="")
     improvement_suggestions: Mapped[list[str]] = mapped_column(JSON, default=list)
     lead_status: Mapped[str] = mapped_column(String(40), default="qualified", index=True)
+    crm_stage: Mapped[str] = mapped_column(String(40), default="qualified", index=True)
     outreach_status: Mapped[str] = mapped_column(String(40), default="not_started", index=True)
+    assigned_user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("crm_users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    last_contacted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
+    next_follow_up_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        index=True,
+    )
     notes: Mapped[str] = mapped_column(Text, default="")
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
     social_links: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
@@ -75,13 +119,86 @@ class Lead(Base, TimestampMixin):
     raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
     campaign: Mapped[Campaign | None] = relationship(back_populates="leads")
+    assigned_user: Mapped[CrmUser | None] = relationship(back_populates="assigned_leads")
     outreach_items: Mapped[list["Outreach"]] = relationship(back_populates="lead")
+    crm_tag_links: Mapped[list["LeadTag"]] = relationship(
+        back_populates="lead",
+        cascade="all, delete-orphan",
+    )
+    crm_notes: Mapped[list["LeadNote"]] = relationship(
+        back_populates="lead",
+        cascade="all, delete-orphan",
+    )
+    crm_activities: Mapped[list["LeadActivity"]] = relationship(
+        back_populates="lead",
+        cascade="all, delete-orphan",
+    )
+    email_messages: Mapped[list["EmailMessage"]] = relationship(
+        back_populates="lead",
+        cascade="all, delete-orphan",
+    )
+
+
+class LeadTag(Base):
+    __tablename__ = "lead_tags"
+
+    lead_id: Mapped[str] = mapped_column(
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    tag_id: Mapped[str] = mapped_column(
+        ForeignKey("crm_tags.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    lead: Mapped[Lead] = relationship(back_populates="crm_tag_links")
+    tag: Mapped[CrmTag] = relationship(back_populates="lead_links")
+
+
+class LeadNote(Base, TimestampMixin):
+    __tablename__ = "lead_notes"
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    lead_id: Mapped[str] = mapped_column(
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        index=True,
+    )
+    body: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(String(160), default="LeadForge user")
+
+    lead: Mapped[Lead] = relationship(back_populates="crm_notes")
+
+
+class LeadActivity(Base):
+    __tablename__ = "lead_activities"
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    lead_id: Mapped[str] = mapped_column(
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        index=True,
+    )
+    event_type: Mapped[str] = mapped_column(String(80), index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    description: Mapped[str] = mapped_column(Text, default="")
+    actor: Mapped[str] = mapped_column(String(160), default="LeadForge AI")
+    metadata_json: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        index=True,
+    )
+
+    lead: Mapped[Lead] = relationship(back_populates="crm_activities")
 
 
 class Outreach(Base, TimestampMixin):
     __tablename__ = "outreach"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
     lead_id: Mapped[str] = mapped_column(ForeignKey("leads.id"), index=True)
     campaign_id: Mapped[str | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True, index=True)
     subject_line: Mapped[str] = mapped_column(String(220), default="")
@@ -102,12 +219,49 @@ class Outreach(Base, TimestampMixin):
 
     lead: Mapped[Lead] = relationship(back_populates="outreach_items")
     campaign: Mapped[Campaign | None] = relationship(back_populates="outreach")
+    email_messages: Mapped[list["EmailMessage"]] = relationship(back_populates="outreach")
+
+
+class EmailMessage(Base):
+    __tablename__ = "email_messages"
+    __table_args__ = (
+        UniqueConstraint("gmail_message_id", name="uq_email_messages_gmail_message_id"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    lead_id: Mapped[str] = mapped_column(
+        ForeignKey("leads.id", ondelete="CASCADE"),
+        index=True,
+    )
+    outreach_id: Mapped[str | None] = mapped_column(
+        ForeignKey("outreach.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    gmail_message_id: Mapped[str] = mapped_column(String(255), index=True)
+    gmail_thread_id: Mapped[str] = mapped_column(String(255), default="", index=True)
+    message_id_header: Mapped[str] = mapped_column(String(500), default="")
+    direction: Mapped[str] = mapped_column(String(20), index=True)
+    from_email: Mapped[str] = mapped_column(String(320), default="")
+    to_email: Mapped[str] = mapped_column(String(320), default="")
+    subject: Mapped[str] = mapped_column(String(500), default="")
+    body_text: Mapped[str] = mapped_column(Text, default="")
+    body_html: Mapped[str] = mapped_column(Text, default="")
+    snippet: Mapped[str] = mapped_column(Text, default="")
+    message_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+    )
+
+    lead: Mapped[Lead] = relationship(back_populates="email_messages")
+    outreach: Mapped[Outreach | None] = relationship(back_populates="email_messages")
 
 
 class Analytics(Base):
     __tablename__ = "analytics"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
     event_type: Mapped[str] = mapped_column(String(80), index=True)
     lead_id: Mapped[str | None] = mapped_column(ForeignKey("leads.id"), nullable=True, index=True)
     campaign_id: Mapped[str | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True, index=True)
@@ -129,7 +283,7 @@ class Setting(Base):
 class LeadGenerationJob(Base):
     __tablename__ = "lead_generation_jobs"
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
     campaign_id: Mapped[str | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(40), default="queued", index=True)
     city: Mapped[str] = mapped_column(String(120), default="")
