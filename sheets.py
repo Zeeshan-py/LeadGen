@@ -1,3 +1,5 @@
+"""Legacy Google Sheets synchronization utilities retained for compatibility."""
+
 from __future__ import annotations
 
 from typing import Any

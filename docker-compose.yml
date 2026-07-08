@@ -1,3 +1,7 @@
+# LeadForge production-like Docker Compose stack.
+#
+# Runs PostgreSQL and the combined application container with persistent volumes
+# for database state and captured website screenshots.
 name: leadgen
 
 services:

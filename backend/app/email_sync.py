@@ -1,3 +1,9 @@
+"""Gmail reply synchronization workflow.
+
+This module polls Gmail threads for replies, stores received messages in CRM,
+advances pipeline stages, and optionally sends a threaded auto-reply.
+"""
+
 from __future__ import annotations
 
 import logging

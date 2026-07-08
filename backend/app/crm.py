@@ -1,3 +1,11 @@
+"""CRM API routes for the central LeadForge pipeline.
+
+The CRM router exposes lead list/detail workflows, user assignment, notes,
+tags, and Gmail synchronization. It is the public API boundary for the CRM
+module; shared lifecycle mutations should continue to flow through
+``app.services.crm`` so activity history remains consistent.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime

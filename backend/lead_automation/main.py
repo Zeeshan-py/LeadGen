@@ -1,3 +1,5 @@
+"""Standalone lead automation CLI workflow used by backend orchestration."""
+
 from __future__ import annotations
 
 import argparse

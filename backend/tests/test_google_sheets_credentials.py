@@ -1,3 +1,5 @@
+"""Regression tests for Google Sheets credential loading and validation."""
+
 from __future__ import annotations
 
 import json

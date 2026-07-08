@@ -1,3 +1,5 @@
+"""Screenshot capture utilities for website evidence and visual enrichment."""
+
 from __future__ import annotations
 
 import hashlib

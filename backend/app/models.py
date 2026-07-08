@@ -1,3 +1,10 @@
+"""Core SQLAlchemy data model for the LeadForge platform.
+
+These ORM classes define the CRM-centered persistence model: campaigns, leads,
+users, tags, notes, activities, outreach, synced email messages, analytics,
+runtime settings, and background generation jobs.
+"""
+
 from __future__ import annotations
 
 import uuid

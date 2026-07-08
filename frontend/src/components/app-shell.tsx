@@ -1,5 +1,12 @@
 "use client";
 
+/**
+ * LeadForge application shell.
+ *
+ * Provides persistent navigation, responsive sidebar behavior, and the shared
+ * page frame used by the platform and AI SDR routes.
+ */
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -38,6 +45,7 @@ import { cn } from "@/lib/utils";
 const nav = [
   { href: "/", label: "Dashboard", icon: Home },
   { href: "/lead-generator", label: "Lead Generator", icon: Sparkles },
+  { href: "/ai-sdr", label: "AI SDR", icon: Bot },
   { href: "/leads", label: "Leads", icon: Users },
   { href: "/crm", label: "CRM", icon: ContactRound },
   { href: "/campaigns", label: "Campaigns", icon: Layers3 },

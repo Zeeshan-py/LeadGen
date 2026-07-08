@@ -1,3 +1,10 @@
+"""Runtime configuration for the LeadForge backend.
+
+Settings are loaded from environment variables and optional .env files. This
+module owns deployment defaults and validation for integrations, database
+connectivity, frontend origins, authentication, and AI/provider credentials.
+"""
+
 from __future__ import annotations
 
 from functools import lru_cache

@@ -1,3 +1,5 @@
+"""In-process background job state for lead generation progress and SSE snapshots."""
+
 from __future__ import annotations
 
 import logging

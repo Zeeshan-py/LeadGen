@@ -1,3 +1,5 @@
+"""Contact discovery helpers for extracting emails, phones, and social links."""
+
 from __future__ import annotations
 
 import logging

@@ -1,3 +1,7 @@
+# LeadForge production image.
+#
+# Builds the static Next.js frontend, installs the FastAPI backend, copies the
+# frontend export into the runtime image, and starts through backend/entrypoint.sh.
 FROM node:22-alpine AS frontend-builder
 
 WORKDIR /build

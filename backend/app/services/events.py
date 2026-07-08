@@ -1,3 +1,5 @@
+"""Structured event helpers for pipeline and progress reporting."""
+
 from __future__ import annotations
 
 from typing import Any

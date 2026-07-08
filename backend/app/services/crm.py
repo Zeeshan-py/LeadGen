@@ -1,3 +1,9 @@
+"""Shared CRM mutation helpers.
+
+Use these helpers for stage transitions, activity records, tags, and contacted
+timestamps so all modules leave consistent audit trails in the CRM timeline.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone

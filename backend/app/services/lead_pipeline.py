@@ -1,3 +1,9 @@
+"""Lead generation pipeline service.
+
+Coordinates source discovery, website enrichment, AI analysis, and persistence
+steps used by background generation jobs.
+"""
+
 from __future__ import annotations
 
 import logging

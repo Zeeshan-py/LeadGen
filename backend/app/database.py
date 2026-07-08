@@ -1,3 +1,10 @@
+"""Database engine, SQLAlchemy base, and session lifecycle utilities.
+
+All backend modules share this database boundary so CRM, lead generation, and
+AI SDR can collaborate through the same PostgreSQL schema while keeping their
+domain services independent.
+"""
+
 from __future__ import annotations
 
 from collections.abc import Generator

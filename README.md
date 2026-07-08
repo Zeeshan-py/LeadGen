@@ -1,111 +1,209 @@
-# LeadForge AI
+# LeadForge AI Platform
 
-LeadForge AI is a private internal lead generation command center. It wraps the existing Python automation with a FastAPI backend, PostgreSQL persistence, Google Sheets sync, Gmail outreach, and a Next.js 15 dashboard.
+> Enterprise-grade AI lead generation, CRM, outreach, and AI SDR workspace for growth teams.
 
-## What Is Included
+<p align="center">
+  <strong>[ LeadForge AI Logo Placeholder ]</strong><br />
+  <em>Replace this text with the final product logo or wordmark before public launch.</em>
+</p>
 
-- `frontend/` - Next.js 15, TypeScript, TailwindCSS, shadcn/ui, Framer Motion
-- `backend/` - FastAPI API wrapping the existing Python automation in `backend/lead_automation`
-- `database/schema.sql` - PostgreSQL schema for leads, campaigns, outreach, analytics, settings, and jobs
-- `scripts/dev.ps1` - local helper for starting Postgres, backend, and frontend
-- `Dockerfile` - production image containing the exported dashboard and API
-- `docker-compose.yml` - production-like app and PostgreSQL stack
+LeadForge AI Platform is a full-stack SaaS system that turns local-market discovery into an actionable sales pipeline. It combines automated lead discovery, AI website analysis, CRM operations, Gmail outreach, analytics, and an independent AI SDR module with production AI calling and a conversation engine.
 
-## Core Flow
+The platform is designed for judges, developers, investors, customers, and future contributors who need to understand not only what LeadForge does, but why the architecture exists and how the pieces fit together.
 
-1. Enter City, State, Country, Business Type, and Max Leads.
-2. `POST /generate-leads` starts a background job.
-3. The frontend subscribes to `/generate-leads/{job_id}/events` for live pipeline progress.
-4. The backend uses Apify Google Maps, website scraping, optional existing Claude contact extraction, Gemini website analysis/outreach, Google Sheets sync, and PostgreSQL upsert.
-5. Leads, campaigns, outreach drafts, analytics, and settings are available from the dashboard.
+## Problem Statement
 
-## CRM
+Small and mid-market businesses need predictable revenue, but the work required to find prospects, inspect websites, identify opportunities, enrich contact data, draft outreach, track replies, and follow up consistently is fragmented across many tools. Teams lose time switching between scrapers, spreadsheets, CRMs, email clients, and AI assistants.
 
-The built-in CRM is available at `/crm` and keeps lead management inside
-LeadForge:
+## Industry Challenges
 
-- Kanban and table views across New, Qualified, Email Generated, Email Sent,
-  Opened, Replied, Interested, Meeting Scheduled, Won, Lost, and Archived.
-- Search and filters for status, country, industry, assigned user, creation
-  date, and last-contacted date.
-- Relational PostgreSQL records for CRM users, tags, notes, activity events,
-  and Gmail messages.
-- Lead detail sheets with company/contact details, AI draft history, full Gmail
-  conversations, notes, follow-up scheduling, and an immutable activity
-  timeline.
-- Automatic Gmail reply synchronization using
-  `GMAIL_REPLY_SYNC_INTERVAL_SECONDS`, with Gmail message/thread IDs persisted
-  and lead stages advanced when messages are sent, opened, or replied to.
+| Challenge | Impact |
+|---|---|
+| Fragmented lead operations | Teams lose context between prospecting, CRM, outreach, and analytics. |
+| Manual qualification | Sales reps spend time on low-quality leads instead of high-intent opportunities. |
+| Weak website insight | Outreach often lacks specific business context and sounds generic. |
+| Slow follow-up | Interested prospects go cold when replies are not tracked or routed. |
+| Data quality drift | Duplicate contacts, inconsistent fields, and spreadsheet exports create unreliable CRM data. |
+| AI trust gap | AI sales tools must be transparent, controllable, and operationally auditable. |
 
-## Environment
+## Solution
 
-Copy `.env.example` to `.env` and fill in the values:
+LeadForge AI is a single operating console for finding, qualifying, storing, and activating leads. It uses automation to discover businesses, AI to evaluate websites and generate outreach, CRM workflows to manage lifecycle state, and an independent AI SDR architecture to normalize contacts and conduct future sales conversations.
 
-```powershell
-Copy-Item .env.example .env
+## Vision
+
+Build the AI-native revenue operating system for small teams: one platform where lead discovery, CRM, outreach, analytics, and AI SDR workflows are connected by shared data and explainable automation.
+
+## Mission
+
+Help growth teams convert raw market opportunity into qualified pipeline faster, with less manual work and more trustworthy customer context.
+
+## Architecture Overview
+
+LeadForge is a modular monolith with clear internal boundaries:
+
+- **Frontend**: Next.js 15 App Router, React 19, TypeScript, Tailwind CSS, shadcn/ui, Recharts, Framer Motion.
+- **Backend**: FastAPI, SQLAlchemy 2, Alembic, PostgreSQL, server-sent events for generation jobs.
+- **AI**: Gemini for website analysis and outreach drafting; independent AI SDR conversation engine for future voice/chat SDR flows.
+- **Integrations**: Apify, Google Sheets, Gmail OAuth, PostgreSQL.
+- **CRM Core**: Central shared record system for all contacts, pipeline stages, notes, tags, activities, and messages.
+
+```mermaid
+flowchart LR
+    User["User / Growth Team"] --> UI["Next.js Dashboard"]
+    UI --> API["FastAPI Backend"]
+    API --> CRM["CRM Core<br/>leads + activities + outreach"]
+    API --> LG["Lead Generator"]
+    API --> SDR["AI SDR Module"]
+    API --> AI["Gemini AI Services"]
+    API --> Gmail["Gmail API"]
+    API --> Sheets["Google Sheets"]
+    LG --> Apify["Apify Maps + Web Crawlers"]
+    CRM --> DB["PostgreSQL"]
+    SDR --> DB
+    API --> DB
 ```
 
-Required for lead generation:
+## Platform Features
 
-- `DATABASE_URL`
-- `APIFY_API_TOKEN`
-- `GEMINI_API_KEY`
-- `GOOGLE_SHEETS_SPREADSHEET_ID`
-- `GOOGLE_SERVICE_ACCOUNT_JSON`
+- AI-powered lead generation from geographic and industry criteria.
+- Website scraping and opportunity analysis.
+- Contact discovery, confidence scoring, and validation.
+- CRM kanban/table views with stages, notes, tags, activities, and Gmail messages.
+- AI-generated outreach drafts and follow-ups.
+- Gmail sending, open tracking, reply sync, and auto-reply.
+- Analytics for lead generation, outreach, conversion, and activity trends.
+- Independent AI SDR module with contact ingestion from CSV, Excel, Google Sheets, Manual Entry, REST API, CRM, and future integrations.
+- AI SDR dashboard with filters, bulk actions, export, and detailed profiles.
+- Full-screen AI Calling Workspace with Twilio, Gemini 2.5 Flash, Cartesia, live transcript streaming, AI Brain state, and mock fallback.
+- AI SDR conversation engine with memory, state machine, qualification, objections, closing, and structured events.
+- Docker-first deployment with Railway/Netlify guidance.
 
-Required for Gmail sending:
+## Modules
 
-- `GMAIL_CLIENT_ID`
-- `GMAIL_CLIENT_SECRET`
-- `GMAIL_REFRESH_TOKEN`
-- `GMAIL_SENDER_EMAIL`
+| Module | Purpose |
+|---|---|
+| Lead Generator | Discovers businesses, scrapes websites, analyzes opportunities, and stores leads. |
+| CRM | Central operational system for lead lifecycle, ownership, notes, tags, activities, and emails. |
+| Outreach | Generates and sends personalized email outreach and tracks replies. |
+| Analytics | Aggregates pipeline, generation, and outreach performance. |
+| AI SDR | Independent SDR architecture for normalized contact ingestion, dashboarding, mock calls, and conversation logic. |
+| Integrations | Apify, Google Sheets, Gmail, Gemini, PostgreSQL, and future connectors. |
+| Shared Services | Database, configuration, schemas, settings store, and shared UI primitives. |
 
-Optional Gmail automation:
+## Technology Stack
 
-- `GMAIL_REPLY_SYNC_INTERVAL_SECONDS` - background reply-check interval, default `60`
-- `AUTO_REPLY_ENABLED` - send an automatic threaded reply when a client replies, default `true`
-- `AUTO_REPLY_BODY` - body text for the automatic reply
+| Layer | Technology |
+|---|---|
+| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS, shadcn/ui |
+| Backend | FastAPI, Pydantic 2, SQLAlchemy 2, Alembic |
+| Database | PostgreSQL 16, SQLite for tests |
+| AI | Google Gemini via `google-genai`; Anthropic dependency retained for future/legacy extraction paths |
+| Crawling | Apify Google Maps and website crawlers, BeautifulSoup, Playwright |
+| Email | Gmail OAuth, Gmail API, tracking pixel |
+| Deployment | Docker, Docker Compose, Railway, Netlify static frontend option |
+| Testing | Pytest, unittest, ESLint, Next production build |
 
-The Settings page can store runtime overrides in PostgreSQL. Environment variables remain the deployment defaults.
+## System Workflow
 
-### Google Sheets Credentials
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant Apify
+    participant AI as Gemini
+    participant CRM
+    participant Gmail
 
-LeadForge reads Google Sheets credentials only from the environment, so no
-credential file is needed in Railway or Docker:
-
-```dotenv
-GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account",...}
-GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
+    User->>Frontend: Start lead generation
+    Frontend->>Backend: POST /generate-leads
+    Backend->>Apify: Discover local businesses
+    Backend->>Backend: Scrape websites and discover contacts
+    Backend->>AI: Analyze website and draft outreach
+    Backend->>CRM: Upsert lead, outreach, analytics
+    Backend-->>Frontend: SSE progress events
+    User->>Frontend: Review CRM and outreach
+    Frontend->>Backend: POST /send-email
+    Backend->>Gmail: Send message
+    Gmail-->>Backend: Message/thread IDs
+    Backend->>CRM: Activity and stage updates
 ```
 
-Share the target spreadsheet with the service account `client_email` as an editor. You can verify the connection at:
+## High-Level Diagram
 
-```text
-GET /health/google
+```mermaid
+flowchart TD
+    A["Market Criteria"] --> B["Lead Generator"]
+    B --> C["Website + Contact Enrichment"]
+    C --> D["AI Analysis"]
+    D --> E["CRM Lead Record"]
+    E --> F["Outreach"]
+    E --> G["Analytics"]
+    E --> H["AI SDR"]
+    H --> I["Dashboard"]
+    H --> J["AI Calling Workspace"]
+    H --> K["Conversation Engine"]
 ```
 
-If `GOOGLE_SERVICE_ACCOUNT_JSON` is missing or invalid, the application logs a
-clear warning and continues with PostgreSQL storage while Google Sheets remains
-disabled.
+## Deployment Diagram
 
-### Railway
-
-Deploy the root `Dockerfile`, add a Railway PostgreSQL service, and configure
-the application variables from `.env.example`. Set
-`GOOGLE_SERVICE_ACCOUNT_JSON` to the complete service account JSON object as a
-single environment variable. Do not upload or mount `service-account.json`.
-
-The Settings page also includes a Google Sheets Status card and a Test Google Sheets Connection button.
-
-## Local Development
-
-Start Postgres:
-
-```powershell
-docker compose up -d postgres
+```mermaid
+flowchart LR
+    Browser --> App["LeadForge Container<br/>FastAPI + exported Next.js"]
+    App --> Postgres["PostgreSQL Volume / Service"]
+    App --> Gmail["Gmail API"]
+    App --> Gemini["Gemini API"]
+    App --> Apify["Apify API"]
+    App --> Sheets["Google Sheets API"]
 ```
 
-Backend:
+## AI Architecture
+
+LeadForge uses AI in controlled operational boundaries:
+
+- **Website Analysis**: Gemini converts scraped content into summaries, problems, suggestions, and opportunity scores.
+- **Outreach Drafting**: Gemini generates personalized cold email and follow-up variants from lead and website context.
+- **AI SDR Conversation Engine**: deterministic state machine and memory layer create natural SDR responses and structured events. It does not currently call an LLM or telephony provider.
+- **Future Voice AI**: the AI Calling Workspace and conversation engine are ready for a future Twilio/voice transport layer.
+
+## Database Overview
+
+CRM-centered relational design:
+
+- `leads` is the central contact/company table.
+- `campaigns` groups generated leads.
+- `outreach` stores generated email drafts and sending state.
+- `crm_users`, `crm_tags`, `lead_tags`, `lead_notes`, and `lead_activities` power CRM operations.
+- `email_messages` stores Gmail threads and synced messages.
+- `analytics` records platform events.
+- `settings` stores runtime configuration overrides.
+- `lead_generation_jobs` tracks background generation runs.
+- `ai_sdr_contact_batches` and `ai_sdr_contact_records` store AI SDR ingestion metadata.
+
+See [docs/DATABASE.md](docs/DATABASE.md).
+
+## Screenshots
+
+| Screen | Description |
+|---|---|
+| Dashboard | `design/crm-kanban-concept.png` can be replaced with final dashboard capture. |
+| CRM Detail | `design/crm-detail-concept.png` can be replaced with final CRM profile capture. |
+| AI SDR Dashboard | Add a final screenshot of `/ai-sdr`. |
+| AI Calling Workspace | Add a final screenshot of `/ai-sdr/call?contactId=<id>`. |
+
+## Installation
+
+### Prerequisites
+
+- Python 3.12
+- Node.js 20+
+- PostgreSQL 16 or Docker
+- Apify token
+- Gemini API key
+- Optional Google Sheets and Gmail OAuth credentials
+
+### Local Backend
 
 ```powershell
 cd backend
@@ -116,7 +214,7 @@ python -m playwright install chromium
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Frontend:
+### Local Frontend
 
 ```powershell
 cd frontend
@@ -126,100 +224,152 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Docker
+## Configuration
 
-Set at least these values in `.env`:
+Copy `.env.example` to `.env` and fill in deployment-specific values.
 
-```dotenv
-POSTGRES_PASSWORD=use-a-long-url-safe-random-password
-BASIC_AUTH_USERNAME=admin
-BASIC_AUTH_PASSWORD=use-another-long-random-password
-APP_URL=http://localhost:8000
+```powershell
+Copy-Item .env.example .env
 ```
 
-Then build and start the complete application:
+Runtime settings can also be saved through the Settings page and persisted in PostgreSQL.
+
+## Environment Variables
+
+Key variables:
+
+- `DATABASE_URL`
+- `APIFY_API_TOKEN`
+- `GEMINI_API_KEY`
+- `GOOGLE_SHEETS_SPREADSHEET_ID`
+- `GOOGLE_SERVICE_ACCOUNT_JSON`
+- `GMAIL_CLIENT_ID`
+- `GMAIL_CLIENT_SECRET`
+- `GMAIL_REFRESH_TOKEN`
+- `GMAIL_SENDER_EMAIL`
+- `BASIC_AUTH_USERNAME`
+- `BASIC_AUTH_PASSWORD`
+
+See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md).
+
+## Docker Deployment
 
 ```powershell
 docker compose up -d --build
 docker compose ps
 ```
 
-Open `http://localhost:8000`. The browser will request the Basic Auth
-credentials from `.env`. PostgreSQL is private to the Compose network and is
-persisted in the `leadgen_postgres` volume.
+The container runs Alembic migrations before starting the API and serves the exported frontend from FastAPI in production.
 
-The container runs `alembic upgrade head` before starting the API. Readiness is
-available at `GET /health/ready`; liveness is available at `GET /health/live`.
+## Railway Deployment
 
-### Docker Hub
+1. Create a Railway PostgreSQL service.
+2. Deploy the repository root Dockerfile.
+3. Configure environment variables from `.env.example`.
+4. Set `APP_URL`, `FRONTEND_ORIGIN`, and `PUBLIC_BACKEND_URL` to the public HTTPS URL.
+5. Store `GOOGLE_SERVICE_ACCOUNT_JSON` as a single-line JSON environment variable.
 
-Build and push the requested image manually:
+## Netlify Deployment
 
-```powershell
-docker build -t zeeshanpy/leadgen:latest .
-docker login --username zeeshanpy
-docker push zeeshanpy/leadgen:latest
+LeadForge can use Netlify for a frontend-only deployment when the FastAPI backend is hosted separately:
+
+1. Set `NEXT_PUBLIC_API_URL` to the backend URL.
+2. Build from `frontend/`.
+3. Publish the static export.
+4. Configure backend CORS `FRONTEND_ORIGIN` to the Netlify URL.
+
+## Production Checklist
+
+- [ ] Use HTTPS-only public URLs.
+- [ ] Set strong `POSTGRES_PASSWORD`, `BASIC_AUTH_USERNAME`, and `BASIC_AUTH_PASSWORD`.
+- [ ] Store API keys in platform secrets, never in source control.
+- [ ] Run `alembic upgrade head`.
+- [ ] Verify `GET /health/ready`.
+- [ ] Configure Google Sheets sharing with the service account.
+- [ ] Verify Gmail OAuth sender.
+- [ ] Configure log retention and database backups.
+- [ ] Keep `WEB_CONCURRENCY=1` until background jobs move to an external queue.
+- [ ] Test lead generation, CRM updates, email send, and AI SDR dashboard.
+
+## Folder Structure
+
+```text
+Lead generation/
+  backend/
+    app/                 FastAPI app, CRM, models, schemas, services
+    ai_sdr/              Independent AI SDR module
+    lead_automation/     Lead discovery and enrichment automation
+    migrations/          Alembic migrations
+    tests/               Backend test suite
+  frontend/
+    src/app/             Next.js app routes
+    src/components/      Shared UI and CRM components
+    src/lib/             Frontend API client and types
+    ai_sdr/              Independent AI SDR frontend module
+  database/              SQL schema reference
+  docs/                  Platform documentation
+  scripts/               Development utilities
+  design/                Design concepts and screenshot placeholders
 ```
 
-GitHub Actions can publish the same image. Add a repository secret named
-`DOCKERHUB_TOKEN`, then run the **Publish Docker image** workflow or push a
-version tag such as `v1.0.0`.
+## API Overview
 
-## Deployment
+Primary API groups:
 
-For a Linux server with Docker:
+- Health: `/health`, `/health/ready`, `/health/google`
+- Lead generation: `/generate-leads`, `/generate-leads/{job_id}/events`
+- Leads: `/get-leads`, `/get-leads/export.csv`
+- Campaigns: `/get-campaigns`
+- Outreach: `/outreach`, `/send-email`
+- CRM: `/crm/leads`, `/crm/users`
+- AI SDR: `/ai-sdr/*`
 
-```bash
-git clone https://github.com/Zeeshan-py/LeadGen.git
-cd LeadGen
-cp .env.example .env
-# Edit .env with production credentials and an https APP_URL.
-docker compose pull
-docker compose up -d
-```
+See [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
 
-Place the app behind an HTTPS reverse proxy or a platform load balancer. Set
-`FORWARDED_ALLOW_IPS` to the trusted proxy address/range, not `*`, and set
-`APP_URL`, `FRONTEND_ORIGIN`, and `PUBLIC_BACKEND_URL` to the public HTTPS URL.
+## License
 
-Keep `WEB_CONCURRENCY=1`: generation jobs and SSE delivery currently use
-in-process state. Scaling to multiple replicas requires an external queue and
-shared event transport.
+This repository does not currently include a formal license file. Add a license before public distribution or hackathon publication.
 
-Back up PostgreSQL regularly:
+## Contribution Guide
 
-```bash
-docker compose exec -T postgres pg_dump -U leadgen -d leadgen -Fc > leadgen.dump
-```
+1. Read [docs/DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md).
+2. Keep module boundaries intact.
+3. Add or update tests for backend behavior.
+4. Run backend tests and frontend lint/build.
+5. Document new endpoints, tables, environment variables, and workflows.
 
-## API
+## Future Roadmap
 
-- `POST /generate-leads`
-- `GET /generate-leads/latest`
-- `GET /generate-leads/{job_id}`
-- `GET /generate-leads/{job_id}/events`
-- `GET /get-leads`
-- `PATCH /get-leads/{lead_id}`
-- `GET /get-leads/export.csv`
-- `GET /get-campaigns`
-- `POST /get-campaigns`
-- `GET /outreach`
-- `POST /outreach/{lead_id}/regenerate`
-- `POST /send-email`
-- `POST /send-email/sync-statuses`
-- `GET /get-analytics`
-- `GET /settings`
-- `PUT /settings`
-- `GET /health/google`
-- `GET /crm/leads`
-- `GET /crm/leads/{lead_id}`
-- `PATCH /crm/leads/{lead_id}`
-- `POST /crm/leads/{lead_id}/notes`
-- `PUT /crm/leads/{lead_id}/tags`
-- `POST /crm/leads/{lead_id}/sync-gmail`
-- `GET /crm/users`
-- `POST /crm/users`
+- External job queue and shared event bus for multi-replica scaling.
+- Persistent AI SDR conversation sessions.
+- Distributed call-session storage for multi-worker AI SDR voice deployments.
+- Role-based authentication and multi-tenant SaaS accounts.
+- Billing and subscription management.
+- More import adapters for AI SDR sources.
+- Advanced analytics dashboards and forecasting.
+- Observability with metrics, tracing, and alerting.
 
-## Existing Automation
+## FAQ
 
-The original Python files are copied unchanged into `backend/lead_automation/` and imported by the FastAPI orchestration layer. The dashboard wrapper does not replace the working Apify, scraping, contact extraction, deduplication, or Sheets logic.
+**Is LeadForge only a lead scraper?**
+No. Lead generation is one module. CRM, outreach, analytics, AI SDR ingestion, AI calling, and conversation orchestration all operate around the shared CRM.
+
+**Does AI SDR place calls today?**
+Yes. AI SDR has a provider-based calling stack for Twilio telephony, Gemini 2.5 Flash reasoning, and Cartesia speech, plus mock mode for local testing.
+
+**Where is the source of truth for contacts?**
+The `leads` table in the CRM is the central contact and company record.
+
+**Can the frontend be hosted separately?**
+Yes. Set `NEXT_PUBLIC_API_URL` and configure backend CORS.
+
+**Why is `WEB_CONCURRENCY=1` recommended?**
+Generation jobs and SSE state are currently in process. Multi-worker scaling requires an external queue/event transport.
+
+## Acknowledgements
+
+LeadForge integrates with and builds on FastAPI, Next.js, PostgreSQL, SQLAlchemy, Alembic, shadcn/ui, Apify, Google APIs, Gmail, and Gemini.
+
+## Credits
+
+Created by the LeadForge team for AI-native sales operations and hackathon demonstration.

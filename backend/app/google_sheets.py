@@ -1,3 +1,5 @@
+"""Google Sheets credential validation and spreadsheet access helpers."""
+
 from __future__ import annotations
 
 import json

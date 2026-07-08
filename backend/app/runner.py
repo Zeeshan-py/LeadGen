@@ -1,3 +1,10 @@
+"""Lead generation job orchestration.
+
+The runner owns the background execution path for discovery, enrichment,
+analysis, persistence, and progress snapshots. It currently uses in-process
+state and should be moved behind an external queue before horizontal scaling.
+"""
+
 from __future__ import annotations
 
 import logging

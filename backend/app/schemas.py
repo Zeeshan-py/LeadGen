@@ -1,3 +1,10 @@
+"""Pydantic request and response contracts for the platform API.
+
+Schemas in this module define the JSON boundary used by the frontend and
+external clients. They intentionally mirror stable API concepts rather than
+exposing raw ORM objects.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime

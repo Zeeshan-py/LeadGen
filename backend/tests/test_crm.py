@@ -1,3 +1,5 @@
+"""Regression tests for CRM lead lifecycle and activity behavior."""
+
 from __future__ import annotations
 
 import base64

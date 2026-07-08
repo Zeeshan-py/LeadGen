@@ -1,3 +1,5 @@
+"""Contact enrichment service for email, phone, and social discovery."""
+
 from __future__ import annotations
 
 import logging

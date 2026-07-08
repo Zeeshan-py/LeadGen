@@ -1,3 +1,6 @@
+# Backend-only runtime image for LeadForge FastAPI.
+#
+# Used when deploying the API separately from the frontend static export.
 FROM python:3.13-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

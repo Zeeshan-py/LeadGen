@@ -1,3 +1,5 @@
+"""Legacy Apify website crawler integration client."""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,9 @@
+"""Persistence service for generated leads.
+
+Centralizes deduplication, campaign accounting, outreach storage, CRM activity,
+and analytics side effects for the lead generation workflow.
+"""
+
 from __future__ import annotations
 
 import logging

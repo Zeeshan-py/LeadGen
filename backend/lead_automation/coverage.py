@@ -1,3 +1,5 @@
+"""Coverage and quality reporting helpers for lead automation output."""
+
 from __future__ import annotations
 
 import json

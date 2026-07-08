@@ -1,3 +1,5 @@
+"""Apify Google Maps integration for business discovery."""
+
 from __future__ import annotations
 
 import json

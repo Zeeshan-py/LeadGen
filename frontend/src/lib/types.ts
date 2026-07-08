@@ -1,3 +1,10 @@
+/**
+ * Shared TypeScript contracts for LeadForge platform APIs.
+ *
+ * These interfaces intentionally represent stable frontend-facing API shapes
+ * rather than backend ORM implementation details.
+ */
+
 export type Lead = {
   id: string;
   campaign_id: string | null;

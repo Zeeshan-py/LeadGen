@@ -1,3 +1,9 @@
+"""Website analysis and outreach generation service.
+
+Transforms scraped lead evidence into AI-generated website insights and email
+drafts while preserving deterministic fallbacks when provider output is absent.
+"""
+
 from __future__ import annotations
 
 import logging

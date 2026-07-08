@@ -1,3 +1,5 @@
+"""Regression tests for outreach generation, Gmail sending, and email sync."""
+
 from __future__ import annotations
 
 import unittest

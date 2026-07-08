@@ -1,3 +1,5 @@
+"""Configuration model for lead automation providers and limits."""
+
 from __future__ import annotations
 
 import os

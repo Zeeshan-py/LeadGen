@@ -1,3 +1,9 @@
+"""AI analysis and outreach generation adapter.
+
+This module wraps Gemini interactions and converts website/lead context into
+structured analysis and sales copy used by the CRM and outreach workflows.
+"""
+
 from __future__ import annotations
 
 import json

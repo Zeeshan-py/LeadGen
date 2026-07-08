@@ -1,3 +1,5 @@
+"""Search and filtering helpers for lead/CRM retrieval workflows."""
+
 from __future__ import annotations
 
 import logging

@@ -1,3 +1,5 @@
+"""Legacy data models for the original lead automation scripts."""
+
 from __future__ import annotations
 
 import re

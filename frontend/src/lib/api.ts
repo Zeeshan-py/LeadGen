@@ -1,3 +1,10 @@
+/**
+ * Shared frontend API client for the LeadForge platform.
+ *
+ * Feature pages use these functions to call FastAPI routes for dashboard,
+ * lead generation, CRM, outreach, analytics, settings, and integrations.
+ */
+
 import type {
   Analytics,
   Campaign,

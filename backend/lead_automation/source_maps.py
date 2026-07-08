@@ -1,3 +1,5 @@
+"""Source mapping utilities for external lead data providers."""
+
 from __future__ import annotations
 
 from typing import Any

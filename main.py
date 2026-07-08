@@ -1,3 +1,5 @@
+"""Legacy CLI workflow for standalone lead automation."""
+
 from __future__ import annotations
 
 import argparse

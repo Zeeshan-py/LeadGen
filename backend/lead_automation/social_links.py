@@ -1,3 +1,5 @@
+"""Social profile discovery and normalization helpers."""
+
 from __future__ import annotations
 
 import html as html_lib

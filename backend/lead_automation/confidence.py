@@ -1,3 +1,5 @@
+"""Confidence scoring utilities for discovered lead/contact evidence."""
+
 from __future__ import annotations
 
 import re

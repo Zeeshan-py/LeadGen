@@ -1,3 +1,5 @@
+"""Regression tests for the lead generation pipeline."""
+
 from __future__ import annotations
 
 import unittest

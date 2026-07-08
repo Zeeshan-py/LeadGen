@@ -1,3 +1,6 @@
+# Frontend-only image for the LeadForge Next.js static export.
+#
+# Useful when the frontend is hosted separately from the FastAPI backend.
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY frontend/package*.json ./

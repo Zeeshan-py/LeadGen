@@ -1,3 +1,5 @@
+"""AI-assisted extraction helpers for website/contact evidence."""
+
 from __future__ import annotations
 
 import logging

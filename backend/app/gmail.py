@@ -1,3 +1,10 @@
+"""Gmail integration client.
+
+The client validates OAuth configuration, sends outbound outreach, and exposes
+message/thread data needed by CRM synchronization without leaking Gmail-specific
+details into route handlers.
+"""
+
 from __future__ import annotations
 
 import base64

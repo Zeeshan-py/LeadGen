@@ -1,3 +1,5 @@
+"""Regression tests for contact and website enrichment behavior."""
+
 from __future__ import annotations
 
 import unittest

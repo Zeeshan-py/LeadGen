@@ -1,3 +1,12 @@
+"""LeadForge FastAPI application entrypoint.
+
+This module wires the platform routers, production authentication middleware,
+health checks, lead generation orchestration, outreach, analytics, settings,
+and static frontend serving. Route handlers here are intentionally thin around
+shared services, but the file remains the operational center of the deployed
+backend process.
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -19,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session, joinedload
 
+from ai_sdr.api.router import router as ai_sdr_router
 from .ai import GeminiLeadAI, WebsiteAnalysis
 from .config import get_settings
 from .crm import router as crm_router
@@ -55,6 +65,7 @@ logging.getLogger("app").setLevel(logging.INFO)
 logging.getLogger("lead_automation").setLevel(logging.INFO)
 app = FastAPI(title="LeadForge AI API", version="1.0.0")
 app.include_router(crm_router)
+app.include_router(ai_sdr_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,11 +81,15 @@ app.mount("/static/screenshots", StaticFiles(directory=settings.screenshots_dir)
 
 @app.middleware("http")
 async def require_production_auth(request: Request, call_next):
-    if settings.environment.lower() != "production" or request.url.path in {
+    if (
+        settings.environment.lower() != "production"
+        or request.url.path in {
         "/health",
         "/health/live",
         "/health/ready",
-    }:
+        }
+        or request.url.path.startswith("/ai-sdr/calls/twilio/")
+    ):
         return await call_next(request)
 
     authorization = request.headers.get("Authorization", "")
