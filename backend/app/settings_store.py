@@ -1,3 +1,9 @@
+"""Runtime settings merge helpers.
+
+Environment variables define deployment defaults; rows in the ``settings``
+table provide user-managed overrides for selected platform configuration.
+"""
+
 from __future__ import annotations
 
 from typing import Any

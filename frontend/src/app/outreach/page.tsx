@@ -31,6 +31,8 @@ export default function OutreachPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [version, setVersion] = useState<(typeof versions)[number]["key"]>("cold_email");
+  const [sending, setSending] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
 
   useEffect(() => {
     Promise.all([getOutreach(), getLeads({ limit: "500" })])
@@ -54,23 +56,37 @@ export default function OutreachPage() {
 
   async function onSend() {
     if (!selected) return;
+    if (!body.trim()) {
+      toast.error("The selected draft is empty. Regenerate it before sending.");
+      return;
+    }
+    setSending(true);
     try {
       const updated = await sendEmail(selected.id, version);
       setOutreach((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
       toast.success("Email sent through Gmail");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Email send failed");
+    } finally {
+      setSending(false);
     }
   }
 
   async function onRegenerate() {
     if (!selected) return;
+    setRegenerating(true);
     try {
       const updated = await regenerateOutreach(selected.lead_id);
       setOutreach((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
-      toast.success("Outreach regenerated");
+      if (updated.failed_reason) {
+        toast.warning(updated.failed_reason);
+      } else {
+        toast.success("Outreach regenerated");
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Regeneration failed");
+    } finally {
+      setRegenerating(false);
     }
   }
 
@@ -144,13 +160,13 @@ export default function OutreachPage() {
               <Copy data-icon="inline-start" />
               Copy
             </Button>
-            <Button variant="outline" onClick={onRegenerate} disabled={!selected}>
+            <Button variant="outline" onClick={onRegenerate} disabled={!selected || regenerating}>
               <RefreshCw data-icon="inline-start" />
-              Regenerate
+              {regenerating ? "Regenerating..." : "Regenerate"}
             </Button>
-            <Button onClick={onSend} disabled={!selected || !selectedLead?.email}>
+            <Button onClick={onSend} disabled={!selected || !selectedLead?.email || sending}>
               <Send data-icon="inline-start" />
-              Send Email
+              {sending ? "Sending..." : "Send Email"}
             </Button>
           </div>
         </CardHeader>

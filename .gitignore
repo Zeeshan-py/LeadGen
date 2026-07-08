@@ -1,4 +1,6 @@
 .env
+.env.*
+!.env.example
 .venv/
 .venv*/
 venv/
@@ -12,6 +14,7 @@ dist/
 storage/
 coverage/
 service-account.json
+/lead-generation-*.json
 *.log
 *.err
 *.pid

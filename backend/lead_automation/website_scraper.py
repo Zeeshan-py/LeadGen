@@ -1,3 +1,5 @@
+"""Website fetching and scraping helpers for lead enrichment."""
+
 from __future__ import annotations
 
 import re

@@ -1,3 +1,5 @@
+"""Apify website crawler integration for lead automation."""
+
 from __future__ import annotations
 
 import json

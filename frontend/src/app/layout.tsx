@@ -1,3 +1,10 @@
+/**
+ * Root Next.js layout for LeadForge.
+ *
+ * Wires global CSS, fonts, toast notifications, and the shared AppShell around
+ * all application routes.
+ */
+
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppShell } from "@/components/app-shell";

@@ -1,3 +1,10 @@
+"""Runtime configuration for the LeadForge backend.
+
+Settings are loaded from environment variables and optional .env files. This
+module owns deployment defaults and validation for integrations, database
+connectivity, frontend origins, authentication, and AI/provider credentials.
+"""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -22,6 +29,11 @@ class Settings(BaseSettings):
     )
     frontend_origin: str = Field(default="http://localhost:3000", validation_alias="FRONTEND_ORIGIN")
     public_backend_url: str = Field(default="http://localhost:8000", validation_alias="PUBLIC_BACKEND_URL")
+    basic_auth_username: str = Field(default="", validation_alias="BASIC_AUTH_USERNAME")
+    basic_auth_password: str = Field(default="", validation_alias="BASIC_AUTH_PASSWORD")
+    database_pool_size: int = Field(default=5, validation_alias="DATABASE_POOL_SIZE")
+    database_max_overflow: int = Field(default=10, validation_alias="DATABASE_MAX_OVERFLOW")
+    frontend_static_dir: Path = Field(default=Path("./frontend"), validation_alias="FRONTEND_STATIC_DIR")
 
     apify_api_token: str = Field(default="", validation_alias="APIFY_API_TOKEN")
     apify_actor_id: str = Field(default="compass/crawler-google-places", validation_alias="APIFY_ACTOR_ID")
@@ -33,10 +45,6 @@ class Settings(BaseSettings):
 
     google_sheets_spreadsheet_id: str = Field(default="", validation_alias="GOOGLE_SHEETS_SPREADSHEET_ID")
     google_sheets_sheet_name: str = Field(default="LeadForgeLeads", validation_alias="GOOGLE_SHEETS_SHEET_NAME")
-    google_service_account_file: Path = Field(
-        default=Path("./service-account.json"),
-        validation_alias="GOOGLE_SERVICE_ACCOUNT_FILE",
-    )
     google_service_account_json: str = Field(default="", validation_alias="GOOGLE_SERVICE_ACCOUNT_JSON")
 
     gmail_client_id: str = Field(default="", validation_alias="GMAIL_CLIENT_ID")
@@ -61,6 +69,11 @@ class Settings(BaseSettings):
     default_lead_limit: int = Field(default=50, validation_alias="DEFAULT_LEAD_LIMIT")
     enable_screenshot_capture: bool = Field(default=True, validation_alias="ENABLE_SCREENSHOT_CAPTURE")
     screenshots_dir: Path = Field(default=Path("./storage/screenshots"), validation_alias="SCREENSHOTS_DIR")
+
+    @field_validator("frontend_origin")
+    @classmethod
+    def normalize_frontend_origin(cls, value: str) -> str:
+        return value.rstrip("/")
 
     @field_validator("database_url")
     @classmethod
@@ -96,6 +109,22 @@ class Settings(BaseSettings):
         if missing:
             joined = ", ".join(missing)
             raise RuntimeError(f"Missing required Gmail environment variables: {joined}")
+
+    def validate_production(self) -> None:
+        if self.environment.lower() != "production":
+            return
+        missing = [
+            name
+            for name, value in {
+                "BASIC_AUTH_USERNAME": self.basic_auth_username,
+                "BASIC_AUTH_PASSWORD": self.basic_auth_password,
+            }.items()
+            if not value
+        ]
+        if missing:
+            raise RuntimeError(
+                "Production configuration is incomplete: " + ", ".join(missing)
+            )
 
 
 @lru_cache(maxsize=1)

@@ -1,3 +1,9 @@
+"""Lead generation pipeline service.
+
+Coordinates source discovery, website enrichment, AI analysis, and persistence
+steps used by background generation jobs.
+"""
+
 from __future__ import annotations
 
 import logging
@@ -56,6 +62,16 @@ class LeadPipeline:
     ) -> Lead:
         lead.coverage_market = campaign.name
         lead.search_query = payload.business_type
+        logger.info(
+            "Pipeline started: business=%r website_found=%s maps_url_found=%s "
+            "email_found=%s phone_found=%s socials_found=%s",
+            lead.business_name,
+            bool(lead.website),
+            bool(lead.google_maps_url),
+            bool(lead.primary_email()),
+            bool(lead.primary_phone()),
+            sorted(lead.social_links),
+        )
 
         report_progress("Scraping Websites", min(90, base_progress + 2))
         enrichment = self.contact_enrichment.enrich(lead, payload)
@@ -70,8 +86,20 @@ class LeadPipeline:
 
         self.analysis.enrich_structured_contact(lead)
         self.validation.ensure_contactable(lead, payload.website_mode)
+        logger.info(
+            "Enrichment stages completed: business=%r email=%r phone=%r socials=%s",
+            lead.business_name,
+            lead.primary_email(),
+            lead.primary_phone(),
+            lead.social_links,
+        )
 
         report_progress("Analyzing Websites", min(93, base_progress + 6))
+        logger.info(
+            "AI analysis started: business=%r website_found=%s",
+            lead.business_name,
+            bool(lead.website),
+        )
         website_analysis = self.analysis.analyze_website(
             lead,
             payload.business_type,
@@ -100,6 +128,11 @@ class LeadPipeline:
             outreach=analysis_result.outreach,
             screenshot_url=screenshot_url,
             social_pages=list(enrichment.crawl.get("social_pages", [])),
+        )
+        logger.info(
+            "Pipeline completed: business=%r database_save_completed=Yes lead_id=%s",
+            lead.business_name,
+            saved.id,
         )
         report_progress("Saving Leads", min(98, base_progress + 10))
         return saved

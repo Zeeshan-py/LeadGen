@@ -1,3 +1,5 @@
+"""Data structures used by the lead automation pipeline."""
+
 from __future__ import annotations
 
 import re

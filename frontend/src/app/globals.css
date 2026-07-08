@@ -1,3 +1,10 @@
+/*
+ * Global LeadForge theme and Tailwind CSS entrypoint.
+ *
+ * Defines design tokens consumed by shadcn/ui primitives and application
+ * surfaces across the dashboard, CRM, outreach, and AI SDR modules.
+ */
+
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";

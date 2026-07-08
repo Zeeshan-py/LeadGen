@@ -1,3 +1,10 @@
+/**
+ * ESLint configuration for the LeadForge Next.js frontend.
+ *
+ * Extends Next.js web-vitals and TypeScript rules while excluding generated
+ * build artifacts.
+ */
+
 import { dirname } from "path";
 import { fileURLToPath } from "url";
 import { FlatCompat } from "@eslint/eslintrc";

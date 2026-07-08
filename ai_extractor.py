@@ -1,3 +1,5 @@
+"""Legacy AI-assisted extraction helpers for standalone automation."""
+
 from __future__ import annotations
 
 import json

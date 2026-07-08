@@ -1,3 +1,5 @@
+"""Validation helpers for normalized lead and contact data."""
+
 from __future__ import annotations
 
 import re

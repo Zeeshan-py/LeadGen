@@ -8,6 +8,7 @@ import { PipelineProgress } from "@/components/pipeline-progress";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -17,7 +18,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { generationEventsUrl, getGenerationJob, getLatestGenerationJob, startGeneration } from "@/lib/api";
-import { businessTypes, continents, countriesByContinent, type Continent } from "@/lib/markets";
+import {
+  businessTypes,
+  continents,
+  countriesByContinent,
+  type Continent,
+} from "@/lib/markets";
 import type { GenerationJob } from "@/lib/types";
 
 const leadLimits = [10, 25, 50, 100, 250, 500];
@@ -32,6 +38,7 @@ export default function LeadGeneratorPage() {
   const [form, setForm] = useState({
     continent: "North America" as Continent,
     country: "United States",
+    city: "",
     business_type: "Dentists",
     website_mode: "withWebsite",
     max_leads: 25,
@@ -150,7 +157,12 @@ export default function LeadGeneratorPage() {
                 value={form.continent}
                 onValueChange={(value) => {
                   const continent = value as Continent;
-                  setForm((prev) => ({ ...prev, continent, country: countriesByContinent[continent][0] }));
+                  setForm((prev) => ({
+                    ...prev,
+                    continent,
+                    country: countriesByContinent[continent][0],
+                    city: "",
+                  }));
                 }}
               >
                 <SelectTrigger id="continent">
@@ -169,7 +181,7 @@ export default function LeadGeneratorPage() {
               <FieldLabel htmlFor="country">Country</FieldLabel>
               <Select
                 value={form.country}
-                onValueChange={(country) => setForm((prev) => ({ ...prev, country }))}
+                onValueChange={(country) => setForm((prev) => ({ ...prev, country, city: "" }))}
               >
                 <SelectTrigger id="country">
                   <SelectValue placeholder="Select country" />
@@ -182,6 +194,15 @@ export default function LeadGeneratorPage() {
                   </SelectGroup>
                 </SelectContent>
               </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="city">City</FieldLabel>
+              <Input
+                id="city"
+                value={form.city}
+                onChange={(event) => setForm((prev) => ({ ...prev, city: event.target.value }))}
+                placeholder="Optional, e.g. Dallas"
+              />
             </Field>
             <Field>
               <FieldLabel htmlFor="business_type">Business Type</FieldLabel>
@@ -199,21 +220,6 @@ export default function LeadGeneratorPage() {
               </Select>
             </Field>
             <Field>
-              <FieldLabel htmlFor="max_leads">Number of Leads</FieldLabel>
-              <Select value={String(form.max_leads)} onValueChange={(max_leads) => setForm((prev) => ({ ...prev, max_leads: Number(max_leads) }))}>
-                <SelectTrigger id="max_leads">
-                  <SelectValue placeholder="Select lead limit" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {leadLimits.map((limit) => (
-                      <SelectItem key={limit} value={String(limit)}>{limit} leads</SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
               <FieldLabel>Website Filter</FieldLabel>
               <Select value={form.website_mode} onValueChange={(value) => setForm((prev) => ({ ...prev, website_mode: value }))}>
                 <SelectTrigger aria-label="Website Filter">
@@ -224,6 +230,21 @@ export default function LeadGeneratorPage() {
                     <SelectItem value="withWebsite">With website</SelectItem>
                     <SelectItem value="withoutWebsite">Without Website</SelectItem>
                     <SelectItem value="allPlaces">All</SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="max_leads">Number of Leads</FieldLabel>
+              <Select value={String(form.max_leads)} onValueChange={(max_leads) => setForm((prev) => ({ ...prev, max_leads: Number(max_leads) }))}>
+                <SelectTrigger id="max_leads">
+                  <SelectValue placeholder="Select lead limit" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    {leadLimits.map((limit) => (
+                      <SelectItem key={limit} value={String(limit)}>{limit} leads</SelectItem>
+                    ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>

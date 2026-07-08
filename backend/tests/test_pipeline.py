@@ -1,3 +1,5 @@
+"""Regression tests for the lead generation pipeline."""
+
 from __future__ import annotations
 
 import unittest
@@ -66,12 +68,13 @@ class FakeAI:
 
 
 class FakeNoWebsiteDiscovery:
-    def __init__(self) -> None:
+    def __init__(self, result: ContactDiscoveryResult | None = None) -> None:
         self.calls: list[dict[str, object]] = []
+        self.result = result or ContactDiscoveryResult()
 
     def search_business(self, *args: object, **kwargs: object) -> ContactDiscoveryResult:
         self.calls.append(kwargs)
-        return ContactDiscoveryResult()
+        return self.result
 
 
 class PipelineTests(unittest.TestCase):
@@ -234,6 +237,85 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(ai.outreach_calls, 1)
         self.assertEqual(len(discovery.calls), 1)
         self.assertTrue(discovery.calls[0]["exhaustive"])
+
+    def test_no_website_discovered_contacts_survive_validation_and_save(self) -> None:
+        settings = Settings(
+            ENABLE_CONTACT_DISCOVERY=True,
+            ENABLE_SCREENSHOT_CAPTURE=False,
+        )
+        email = "hello@no-site.example"
+        facebook = "https://facebook.com/no-site-groomer-dallas"
+        discovery = FakeNoWebsiteDiscovery(
+            ContactDiscoveryResult(
+                emails=[email],
+                social_links={"facebook": [facebook]},
+                email_sources={email: ["duckduckgo:email:example.com"]},
+                social_sources={
+                    "facebook": {
+                        facebook: ["duckduckgo:social_primary:facebook.com"]
+                    }
+                },
+                email_confidence={email: 0.91},
+                social_confidence={"facebook": {facebook: 0.94}},
+            )
+        )
+        payload = GenerateLeadRequest(
+            continent="North America",
+            country="United States",
+            business_type="Pet Groomers",
+            max_leads=1,
+            website_mode="withoutWebsite",
+        )
+
+        with Session(self.engine, expire_on_commit=False) as db:
+            campaign = Campaign(
+                name="No Website Contacts",
+                country="United States",
+                continent="North America",
+                business_type="Pet Groomers",
+                status="running",
+                max_leads=1,
+            )
+            db.add(campaign)
+            db.commit()
+            pipeline = LeadPipeline(
+                db=db,
+                settings=settings,
+                scraper=FakeScraper(),
+                ai=FakeAI(),
+                contact_extractor=None,
+                validation=LeadValidationService(),
+            )
+            pipeline.contact_enrichment.discovery = discovery
+            lead = PlaceLead(
+                place_id="no-site-contacts",
+                business_name="No Site Groomer",
+                address="100 Main Street, Dallas, TX",
+                city="Dallas",
+                state="TX",
+                country="United States",
+                phone="+12145550199",
+            )
+
+            pipeline.process(
+                lead,
+                payload,
+                campaign,
+                base_progress=14,
+                report_progress=lambda _stage, _progress: None,
+            )
+            saved = db.scalar(
+                select(Lead).where(Lead.dedupe_key == "pid:no-site-contacts")
+            )
+
+        self.assertEqual(saved.email, email)
+        self.assertEqual(saved.social_links, {"facebook": facebook})
+        self.assertEqual(saved.social_status, "found")
+        self.assertEqual(saved.raw["confidence"]["emails"][email], 0.91)
+        self.assertEqual(
+            saved.raw["confidence"]["social_links"]["facebook"][facebook],
+            0.94,
+        )
 
 
 if __name__ == "__main__":

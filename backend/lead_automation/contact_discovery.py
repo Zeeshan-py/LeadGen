@@ -1,3 +1,5 @@
+"""Contact discovery helpers for extracting emails, phones, and social links."""
+
 from __future__ import annotations
 
 import logging
@@ -40,6 +42,14 @@ SEARCH_GROUPS = (
     ("social_other", "tiktok twitter whatsapp"),
     ("google_business", "google maps"),
 )
+SEARCH_GROUP_TARGETS = {
+    "general": SOCIAL_NETWORKS,
+    "email": (),
+    "social_primary": ("facebook", "instagram"),
+    "social_professional": ("linkedin", "youtube"),
+    "social_other": ("tiktok", "x_twitter", "whatsapp"),
+    "google_business": (),
+}
 BLOCKED_WEBSITE_HOSTS = (
     "facebook.com",
     "instagram.com",
@@ -216,6 +226,23 @@ class ContactDiscovery:
         query_label: str,
     ) -> None:
         if not html:
+            logger.info(
+                "Fallback search completed for %s: group=%s response_received=No "
+                "email_search_executed=%s facebook_search_executed=%s "
+                "instagram_search_executed=%s linkedin_search_executed=%s "
+                "youtube_search_executed=%s tiktok_search_executed=%s "
+                "x_twitter_search_executed=%s whatsapp_search_executed=%s",
+                business_name,
+                query_label,
+                query_label in {"general", "email"},
+                "facebook" in SEARCH_GROUP_TARGETS.get(query_label, ()),
+                "instagram" in SEARCH_GROUP_TARGETS.get(query_label, ()),
+                "linkedin" in SEARCH_GROUP_TARGETS.get(query_label, ()),
+                "youtube" in SEARCH_GROUP_TARGETS.get(query_label, ()),
+                "tiktok" in SEARCH_GROUP_TARGETS.get(query_label, ()),
+                "x_twitter" in SEARCH_GROUP_TARGETS.get(query_label, ()),
+                "whatsapp" in SEARCH_GROUP_TARGETS.get(query_label, ()),
+            )
             return
         parsed = self.parse_search_html(
             html,
@@ -233,6 +260,17 @@ class ContactDiscovery:
             sum(len(links) for links in parsed.social_links.values()),
             len(parsed.website_candidates),
             len(parsed.google_business_links),
+        )
+        logger.info(
+            "Fallback search completed for %s: group=%s response_received=Yes "
+            "email_found=%s socials_found=%s",
+            business_name,
+            query_label,
+            len(parsed.emails),
+            {
+                network: len(links)
+                for network, links in parsed.social_links.items()
+            },
         )
 
     def parse_search_html(

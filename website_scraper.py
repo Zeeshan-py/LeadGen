@@ -1,3 +1,5 @@
+"""Legacy website scraping utilities retained outside the backend package."""
+
 from __future__ import annotations
 
 import re

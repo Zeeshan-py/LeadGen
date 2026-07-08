@@ -1,3 +1,5 @@
+"""Legacy Google Sheets synchronization utilities retained for compatibility."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -28,10 +30,15 @@ COLUMNS = [
 
 
 class SheetsLeadStore:
-    def __init__(self, service_account_file: str, spreadsheet_id: str, sheet_name: str) -> None:
+    def __init__(
+        self,
+        spreadsheet_id: str,
+        sheet_name: str,
+        service_account_info: dict[str, Any],
+    ) -> None:
         self.spreadsheet_id = spreadsheet_id
         self.sheet_name = sheet_name
-        creds = Credentials.from_service_account_file(service_account_file, scopes=SCOPES)
+        creds = Credentials.from_service_account_info(service_account_info, scopes=SCOPES)
         authorized_http = google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http(timeout=60))
         self._service = build("sheets", "v4", http=authorized_http, cache_discovery=False)
         self._ensure_tab_exists()

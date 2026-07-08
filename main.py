@@ -1,3 +1,5 @@
+"""Legacy CLI workflow for standalone lead automation."""
+
 from __future__ import annotations
 
 import argparse
@@ -88,8 +90,22 @@ def main() -> int:
     )
     extractor = LeadExtractor(api_key=settings.anthropic_api_key)
     tracker = CoverageTracker(settings.coverage_file)
+    try:
+        service_account_info = json.loads(settings.service_account_json)
+    except json.JSONDecodeError:
+        print(
+            "GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON; Google Sheets is unavailable.",
+            file=sys.stderr,
+        )
+        return 1
+    if not isinstance(service_account_info, dict):
+        print(
+            "GOOGLE_SERVICE_ACCOUNT_JSON must contain a JSON object; Google Sheets is unavailable.",
+            file=sys.stderr,
+        )
+        return 1
     store = SheetsLeadStore(
-        service_account_file=str(settings.service_account_file),
+        service_account_info=service_account_info,
         spreadsheet_id=args.spreadsheet_id or settings.spreadsheet_id,
         sheet_name=args.sheet_name or settings.sheet_name,
     )
