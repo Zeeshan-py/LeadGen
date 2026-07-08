@@ -227,6 +227,26 @@ class AISDRCallStart(BaseModel):
     actor: str = Field(default="LeadForge user", max_length=160)
 
 
+class AISDRCustomCallTarget(BaseModel):
+    business_name: str = Field(min_length=1, max_length=240)
+    owner_name: str = Field(default="", max_length=180)
+    phone: str = Field(min_length=3, max_length=80)
+    email: str = Field(default="", max_length=320)
+    website: str = Field(default="", max_length=500)
+    instagram_url: str = Field(default="", max_length=500)
+    industry: str = Field(default="", max_length=160)
+    city: str = Field(default="", max_length=120)
+    offer: str = Field(min_length=1, max_length=2000)
+    instructions: str = Field(min_length=1, max_length=5000)
+    notes: str = Field(default="", max_length=5000)
+    actor: str = Field(default="LeadForge user", max_length=160)
+
+
+class AISDRCustomCallResponse(BaseModel):
+    contact: AISDRContactSummary
+    call: AISDRCallSessionRead
+
+
 class AISDRCallControl(BaseModel):
     action: str = Field(pattern="^(mute|unmute|pause_ai|resume_ai|transfer_to_owner|hang_up|generate_summary)$")
     actor: str = Field(default="LeadForge user", max_length=160)

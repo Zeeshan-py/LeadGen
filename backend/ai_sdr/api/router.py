@@ -22,10 +22,13 @@ from ai_sdr.schemas import (
     AISDRCallSessionRead,
     AISDRCallStart,
     AISDRCallTranscriptCreate,
+    AISDRContactInput,
     AISDRConversationResponse,
     AISDRConversationStart,
     AISDRConversationTurn,
     AISDRContactSummary,
+    AISDRCustomCallResponse,
+    AISDRCustomCallTarget,
     AISDRDashboardResponse,
     AISDRImportCreate,
     AISDRImportDetail,
@@ -79,6 +82,76 @@ async def start_outbound_call(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return session.to_dict()
+
+
+@router.post("/calls/custom-target", response_model=AISDRCustomCallResponse)
+async def start_custom_target_call(
+    payload: AISDRCustomCallTarget,
+    db: Session = Depends(get_db),
+) -> dict:
+    actor = payload.actor.strip() or settings.default_actor
+    objective = _custom_target_objective(payload)
+    contact_notes = "\n\n".join(
+        part
+        for part in (
+            payload.notes.strip(),
+            f"Specific offer: {payload.offer.strip()}",
+            f"AI SDR instructions: {payload.instructions.strip()}",
+            f"Instagram: {payload.instagram_url.strip()}" if payload.instagram_url.strip() else "",
+        )
+        if part
+    )
+    try:
+        imported = AISDRIngestionService(db).ingest_contacts(
+            AISDRImportCreate(
+                source_type=AISDRSourceType.MANUAL_ENTRY,
+                contacts=[
+                    AISDRContactInput(
+                        business_name=payload.business_name,
+                        contact_name=payload.owner_name,
+                        phone=payload.phone,
+                        email=payload.email,
+                        website=payload.website,
+                        industry=payload.industry,
+                        city=payload.city,
+                        notes=contact_notes,
+                        tags=["AI SDR", "Custom Call", "Manual Offer"],
+                        raw={
+                            "instagram_url": payload.instagram_url,
+                            "custom_offer": payload.offer,
+                            "custom_instructions": payload.instructions,
+                            "source": "custom_target_call",
+                        },
+                    )
+                ],
+                configuration={
+                    "entrypoint": "ai_sdr_custom_call_target",
+                    "instagram_url": payload.instagram_url,
+                    "offer": payload.offer,
+                    "instructions": payload.instructions,
+                },
+                created_by=actor,
+            )
+        )
+        lead_id = next((record.crm_lead_id for record in imported.records if record.crm_lead_id), None)
+        if not lead_id:
+            raise ValueError("Custom call target could not be stored in CRM.")
+        session = await default_calling_orchestrator.start_outbound_call(
+            db,
+            contact_id=lead_id,
+            objective=objective,
+            actor=actor,
+        )
+        contact = AISDRDashboardService(db).get_contact(lead_id)
+        if not contact:
+            raise LookupError("AI SDR contact was stored but could not be loaded.")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"contact": contact.model_dump(), "call": session.to_dict()}
 
 
 @router.get("/calls", response_model=list[AISDRCallSessionRead])
@@ -381,6 +454,26 @@ def _ingest(payload: AISDRImportCreate, db: Session) -> AISDRImportResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _custom_target_objective(payload: AISDRCustomCallTarget) -> str:
+    context = [
+        f"Business: {payload.business_name.strip()}",
+        f"Owner/contact: {payload.owner_name.strip() or 'unknown'}",
+        f"Industry: {payload.industry.strip() or 'unknown'}",
+        f"City: {payload.city.strip() or 'unknown'}",
+        f"Website: {payload.website.strip() or 'not provided'}",
+        f"Instagram: {payload.instagram_url.strip() or 'not provided'}",
+        f"Specific offer: {payload.offer.strip()}",
+        f"User instructions: {payload.instructions.strip()}",
+    ]
+    if payload.notes.strip():
+        context.append(f"Additional notes: {payload.notes.strip()}")
+    context.append(
+        "Call behavior: open naturally, mention only relevant context, follow the user instructions exactly, "
+        "qualify interest, handle objections calmly, and ask for the best next step."
+    )
+    return "\n".join(context)
 
 
 def _request_payload(request: Request, body: bytes) -> dict[str, str]:

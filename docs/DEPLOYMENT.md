@@ -30,11 +30,50 @@ Production container behavior:
 ## Railway
 
 1. Create PostgreSQL service.
-2. Deploy root Dockerfile.
-3. Set `DATABASE_URL` or allow Compose-style generated URL via service.
-4. Add Apify, Gemini, Gmail, and Google secrets.
-5. Set `APP_URL`, `FRONTEND_ORIGIN`, and `PUBLIC_BACKEND_URL`.
-6. Verify `/health/ready`.
+2. Deploy from the repository root. `railway.json` pins the build to the root `Dockerfile`, which builds the static Next.js frontend and serves it from FastAPI.
+3. Do not set the Railway root directory to `backend` or `frontend` for the combined production app. Those Dockerfiles are for split deployments.
+4. Set `DATABASE_URL` from the Railway PostgreSQL service.
+5. Add Apify, Gemini, Gmail, Google, and AI SDR provider secrets.
+6. Set `APP_URL`, `FRONTEND_ORIGIN`, and `PUBLIC_BACKEND_URL` to the public Railway app URL.
+7. Leave `NEXT_PUBLIC_API_URL` empty for the combined container so the browser calls the same origin.
+8. Verify `/health/ready`, `/ai-sdr/health`, `/ai-sdr/`, and `/ai-sdr/call/`.
+
+The root Docker build checks for `out/ai-sdr/index.html` and `out/ai-sdr/call/index.html`. If the AI SDR pages are not exported, the production image fails during build instead of deploying without the module.
+
+### AI SDR Railway Variables
+
+Use these values for the combined Railway web service:
+
+```dotenv
+AI_SDR_ENABLED=true
+AI_SDR_API_PREFIX=/ai-sdr
+AI_SDR_CALLING_ENABLED=true
+AI_SDR_CALLING_MODE=production
+AI_SDR_TELEPHONY_PROVIDER=twilio
+AI_SDR_LLM_PROVIDER=gemini
+AI_SDR_SPEECH_PROVIDER=cartesia
+AI_SDR_CALL_FROM_NUMBER=<your Twilio phone number>
+AI_SDR_PUBLIC_WEBSOCKET_URL=wss://<your-railway-domain>
+PUBLIC_BACKEND_URL=https://<your-railway-domain>
+FRONTEND_ORIGIN=https://<your-railway-domain>
+NEXT_PUBLIC_API_URL=
+TWILIO_ACCOUNT_SID=<your Twilio account SID>
+TWILIO_AUTH_TOKEN=<your Twilio auth token>
+TWILIO_VALIDATE_SIGNATURE=true
+GEMINI_API_KEY=<your Gemini API key>
+AI_SDR_GEMINI_MODEL=gemini-2.5-flash
+CARTESIA_API_KEY=<your Cartesia API key>
+CARTESIA_VOICE_ID=<your Cartesia voice ID>
+CARTESIA_VERSION=2025-04-16
+CARTESIA_TTS_MODEL=sonic-3.5
+CARTESIA_STT_MODEL=ink-whisper
+CARTESIA_TTS_ENCODING=pcm_mulaw
+CARTESIA_STT_ENCODING=pcm_mulaw
+CARTESIA_TTS_SAMPLE_RATE=8000
+CARTESIA_STT_SAMPLE_RATE=8000
+```
+
+`TWILIO_VALIDATE_SIGNATURE=false` is acceptable only for local mock testing. Keep it `true` on Railway.
 
 ## Netlify
 
@@ -44,6 +83,8 @@ Use Netlify when the frontend is hosted separately:
 - Publish static output.
 - Set `NEXT_PUBLIC_API_URL` to the FastAPI URL.
 - Configure backend `FRONTEND_ORIGIN` to Netlify domain.
+
+The frontend-only Dockerfile also serves the exported `out/` directory through nginx. When using that image, set the build argument `NEXT_PUBLIC_API_URL` to the public FastAPI URL.
 
 ## Production
 

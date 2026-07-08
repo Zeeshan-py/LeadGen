@@ -77,7 +77,8 @@ class MockLLMProvider(LLMProvider):
         return AIResponse(
             text=(
                 f"That is helpful context for {context.business_name}. "
-                "Would it make sense to schedule a short review of the website and follow-up process?"
+                f"I am calling about this: {context.objective[:220]} "
+                "Would it make sense to look at the next step together?"
             ),
             current_goal="Qualify need and secure the next step.",
             conversation_stage="Closing" if interested else "Discovery",

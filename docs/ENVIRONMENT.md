@@ -10,6 +10,7 @@ Environment variables are the deployment defaults. Some values can be overridden
 | `APP_URL` | Public application URL. | `http://localhost:8000` | Production | Must be HTTPS in production. |
 | `APP_PORT` | Host port for app container. | `8000` | No | Avoid public DB exposure. |
 | `IMAGE_TAG` | Docker image tag. | `latest` | No | Pin versions for releases. |
+| `NEXT_PUBLIC_API_URL` | Browser-visible API URL baked into the static frontend. Leave empty for combined container. | empty | Split frontend hosting | Public value, not secret. |
 | `DATABASE_URL` | SQLAlchemy database URL. | local Postgres default | Yes | Secret if it embeds credentials. |
 | `FRONTEND_ORIGIN` | Allowed frontend CORS origin. | `http://localhost:8000` | Yes | Must match deployed frontend URL. |
 | `PUBLIC_BACKEND_URL` | Public backend URL used in links/tracking. | `http://localhost:8000` | Yes | Use HTTPS publicly. |
@@ -78,7 +79,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 |---|---|---|---|---|
 | `AI_SDR_CALLING_ENABLED` | Enables the outbound calling runtime. | `true` | No | Disable to prevent calls. |
 | `AI_SDR_CALLING_MODE` | `production` or `mock`. | `production` | No | Use `mock` for local demos/tests. |
-| `AI_SDR_PUBLIC_WEBSOCKET_URL` | Public WebSocket base URL for Twilio Media Streams. | derived from `PUBLIC_BACKEND_URL` | Production voice | Must be `wss://` publicly. |
+| `AI_SDR_PUBLIC_WEBSOCKET_URL` | Public WebSocket base URL for Twilio Media Streams. | derived from `PUBLIC_BACKEND_URL` | Production voice | Must be `wss://` publicly, including Railway. |
 | `AI_SDR_TELEPHONY_PROVIDER` | Telephony provider implementation. | `twilio` | No | Swappable provider role. |
 | `AI_SDR_LLM_PROVIDER` | LLM provider implementation. | `gemini` | No | Swappable provider role. |
 | `AI_SDR_SPEECH_PROVIDER` | Speech provider implementation. | `cartesia` | No | Swappable provider role. |
@@ -95,12 +96,6 @@ GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 | `CARTESIA_STT_ENCODING` | STT audio encoding from telephony. | `pcm_mulaw` | No | Match Twilio media. |
 | `AI_SDR_CALL_SILENCE_TIMEOUT_SECONDS` | Silence window before finalizing utterances. | `1.2` | No | Tune for latency vs interruptions. |
 | `AI_SDR_CALL_MAX_DURATION_SECONDS` | Maximum planned call duration. | `1800` | No | Cost and abuse control. |
-
-## Frontend
-
-| Variable | Purpose | Default | Required | Security Notes |
-|---|---|---|---|---|
-| `NEXT_PUBLIC_API_URL` | Browser-visible API URL. | production empty / dev localhost | Separate frontend hosting | Public value, not secret. |
 
 ## Security Guidance
 

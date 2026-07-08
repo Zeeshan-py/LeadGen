@@ -34,6 +34,7 @@ Not allowed:
 - `POST /ai-sdr/contacts/bulk-delete`
 - `POST /ai-sdr/contacts/export.csv`
 - `POST /ai-sdr/calls/outbound`
+- `POST /ai-sdr/calls/custom-target`
 - `GET /ai-sdr/calls`
 - `GET /ai-sdr/calls/{call_id}`
 - `POST /ai-sdr/calls/{call_id}/control`
@@ -136,7 +137,7 @@ The `backend/ai_sdr/calling` package adds a provider-based calling runtime:
 
 Calling flow:
 
-1. `POST /ai-sdr/calls/outbound` starts a CRM contact call.
+1. `POST /ai-sdr/calls/outbound` starts a CRM contact call, or `POST /ai-sdr/calls/custom-target` creates an SDR CRM contact from a specific business/offer instruction and starts that call.
 2. Twilio fetches `/ai-sdr/calls/twilio/voice` and receives TwiML that connects to `/ai-sdr/calls/twilio/media`.
 3. Cartesia streams customer speech recognition.
 4. Gemini generates the next natural AI response and live AI Brain state.

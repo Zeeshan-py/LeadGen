@@ -8,6 +8,7 @@
  */
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BriefcaseBusiness,
@@ -27,7 +28,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { bulkDeleteAISDRContacts, exportAISDRContacts, getAISDRDashboard } from "../api";
+import {
+  bulkDeleteAISDRContacts,
+  exportAISDRContacts,
+  getAISDRDashboard,
+  startAISDRCustomTargetCall,
+} from "../api";
 import type { AISDRContact, AISDRDashboard, AISDRDashboardParams } from "../types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -51,6 +57,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Sheet,
   SheetContent,
@@ -100,6 +107,34 @@ const metricCards = [
   { key: "average_call_duration_seconds", label: "Average Call Duration", icon: CalendarClock },
   { key: "conversion_rate", label: "Conversion Rate", icon: TrendingUp },
 ] as const;
+
+type CustomCallForm = {
+  business_name: string;
+  owner_name: string;
+  phone: string;
+  email: string;
+  website: string;
+  instagram_url: string;
+  industry: string;
+  city: string;
+  offer: string;
+  instructions: string;
+  notes: string;
+};
+
+const emptyCustomCallForm: CustomCallForm = {
+  business_name: "",
+  owner_name: "",
+  phone: "",
+  email: "",
+  website: "",
+  instagram_url: "",
+  industry: "",
+  city: "",
+  offer: "",
+  instructions: "",
+  notes: "",
+};
 
 const pipelineLabels: Record<string, string> = {
   new: "New",
@@ -160,10 +195,13 @@ function sourceLabel(value: string) {
 }
 
 export function AISDRWorkspace() {
+  const router = useRouter();
   const [dashboard, setDashboard] = useState<AISDRDashboard>(emptyDashboard);
   const [filters, setFilters] = useState<AISDRDashboardParams>({});
   const [searchDraft, setSearchDraft] = useState("");
   const [loading, setLoading] = useState(false);
+  const [customCall, setCustomCall] = useState<CustomCallForm>(() => emptyCustomCallForm);
+  const [customCallSubmitting, setCustomCallSubmitting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [selectedContact, setSelectedContact] = useState<AISDRContact | null>(null);
 
@@ -262,6 +300,46 @@ export function AISDRWorkspace() {
     }
   }
 
+  function updateCustomCallField(key: keyof CustomCallForm, value: string) {
+    setCustomCall((previous) => ({ ...previous, [key]: value }));
+  }
+
+  async function submitCustomCall(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const businessName = customCall.business_name.trim();
+    const phone = customCall.phone.trim();
+    const offer = customCall.offer.trim();
+    const instructions = customCall.instructions.trim();
+    if (!businessName || !phone || !offer || !instructions) {
+      toast.error("Business, phone, offer, and instructions are required");
+      return;
+    }
+    setCustomCallSubmitting(true);
+    try {
+      const response = await startAISDRCustomTargetCall({
+        business_name: businessName,
+        owner_name: customCall.owner_name.trim(),
+        phone,
+        email: customCall.email.trim(),
+        website: customCall.website.trim(),
+        instagram_url: customCall.instagram_url.trim(),
+        industry: customCall.industry.trim(),
+        city: customCall.city.trim(),
+        offer,
+        instructions,
+        notes: customCall.notes.trim(),
+      });
+      toast.success(`AI SDR call created for ${response.contact.company}`);
+      setCustomCall(emptyCustomCallForm);
+      await refresh(filters);
+      router.push(`/ai-sdr/call?contactId=${response.contact.id}&callId=${response.call.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Custom AI SDR call could not start");
+    } finally {
+      setCustomCallSubmitting(false);
+    }
+  }
+
   function plannedAction(action: string) {
     toast.info(`${action} is not active in this architecture pass`);
   }
@@ -299,6 +377,135 @@ export function AISDRWorkspace() {
           );
         })}
       </div>
+
+      <Card>
+        <CardHeader className="gap-2">
+          <CardTitle>Custom Call Target</CardTitle>
+          <CardDescription>Business details, offer, and AI talk track for one focused outbound call</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={submitCustomCall} className="grid gap-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <Field>
+                <FieldLabel htmlFor="custom-business">Business</FieldLabel>
+                <Input
+                  id="custom-business"
+                  value={customCall.business_name}
+                  onChange={(event) => updateCustomCallField("business_name", event.target.value)}
+                  placeholder="Studio Bloom"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="custom-owner">Owner</FieldLabel>
+                <Input
+                  id="custom-owner"
+                  value={customCall.owner_name}
+                  onChange={(event) => updateCustomCallField("owner_name", event.target.value)}
+                  placeholder="Maya"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="custom-phone">Phone</FieldLabel>
+                <Input
+                  id="custom-phone"
+                  value={customCall.phone}
+                  onChange={(event) => updateCustomCallField("phone", event.target.value)}
+                  placeholder="+1 555 0100"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="custom-email">Email</FieldLabel>
+                <Input
+                  id="custom-email"
+                  value={customCall.email}
+                  onChange={(event) => updateCustomCallField("email", event.target.value)}
+                  placeholder="owner@example.com"
+                />
+              </Field>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <Field>
+                <FieldLabel htmlFor="custom-instagram">Instagram</FieldLabel>
+                <Input
+                  id="custom-instagram"
+                  value={customCall.instagram_url}
+                  onChange={(event) => updateCustomCallField("instagram_url", event.target.value)}
+                  placeholder="@studio_bloom"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="custom-website">Website</FieldLabel>
+                <Input
+                  id="custom-website"
+                  value={customCall.website}
+                  onChange={(event) => updateCustomCallField("website", event.target.value)}
+                  placeholder="https://example.com"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="custom-industry">Industry</FieldLabel>
+                <Input
+                  id="custom-industry"
+                  value={customCall.industry}
+                  onChange={(event) => updateCustomCallField("industry", event.target.value)}
+                  placeholder="Beauty salon"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="custom-city">City</FieldLabel>
+                <Input
+                  id="custom-city"
+                  value={customCall.city}
+                  onChange={(event) => updateCustomCallField("city", event.target.value)}
+                  placeholder="Austin"
+                />
+              </Field>
+            </div>
+            <div className="grid gap-3 xl:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="custom-offer">Specific Offer</FieldLabel>
+                <Textarea
+                  id="custom-offer"
+                  value={customCall.offer}
+                  onChange={(event) => updateCustomCallField("offer", event.target.value)}
+                  placeholder="Offer a 7-day AI receptionist trial for Instagram leads and missed-call follow-up."
+                  className="min-h-28"
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="custom-instructions">AI Instructions</FieldLabel>
+                <Textarea
+                  id="custom-instructions"
+                  value={customCall.instructions}
+                  onChange={(event) => updateCustomCallField("instructions", event.target.value)}
+                  placeholder="Mention I saw their Instagram. Keep it casual. Ask if they lose bookings when DMs are slow. Do not discuss pricing unless they ask."
+                  className="min-h-28"
+                />
+              </Field>
+            </div>
+            <Field>
+              <FieldLabel htmlFor="custom-notes">Notes</FieldLabel>
+              <Textarea
+                id="custom-notes"
+                value={customCall.notes}
+                onChange={(event) => updateCustomCallField("notes", event.target.value)}
+                placeholder="Recent post, service focus, promotion, or any context the AI should know."
+                className="min-h-20"
+              />
+            </Field>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">CRM Stored</Badge>
+                <Badge variant="outline">Custom Objective</Badge>
+              </div>
+              <Button type="submit" disabled={customCallSubmitting}>
+                <Phone data-icon="inline-start" />
+                {customCallSubmitting ? "Starting Call" : "Start Custom Call"}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="gap-4">

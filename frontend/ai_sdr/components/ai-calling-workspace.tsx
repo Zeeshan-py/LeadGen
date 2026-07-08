@@ -216,7 +216,7 @@ function sourceLabel(value: string) {
   return value.replaceAll("_", " ").replaceAll("-", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export function AICallingWorkspace({ contactId }: { contactId: string }) {
+export function AICallingWorkspace({ contactId, callId = "" }: { contactId: string; callId?: string }) {
   const [contact, setContact] = useState<AISDRContact>(fallbackContact);
   const [callSession, setCallSession] = useState<AISDRCallSession | null>(null);
   const [liveProviderError, setLiveProviderError] = useState("");
@@ -231,6 +231,7 @@ export function AICallingWorkspace({ contactId }: { contactId: string }) {
   const [brain, setBrain] = useState<BrainState>(initialBrain);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
   const startedContactRef = useRef<string | null>(null);
+  const loadedCallRef = useRef<string | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -264,6 +265,30 @@ export function AICallingWorkspace({ contactId }: { contactId: string }) {
   }, [contactId]);
 
   useEffect(() => {
+    if (!callId || loadedCallRef.current === callId) return;
+    loadedCallRef.current = callId;
+
+    async function loadExistingCall() {
+      try {
+        const session = await getAISDRCall(callId);
+        setCallSession(session);
+        applyBackendSession(session);
+        if (session.contact_id && session.contact_id !== fallbackContact.id) {
+          const nextContact = await getAISDRContact(session.contact_id);
+          setContact(nextContact);
+        }
+        setCallState(session.status === "completed" ? "ended" : "live");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Could not load call session";
+        setLiveProviderError(message);
+        toast.error(message);
+      }
+    }
+
+    loadExistingCall();
+  }, [callId]);
+
+  useEffect(() => {
     if (!loading && callState === "connecting") {
       setCallState("live");
     }
@@ -291,12 +316,16 @@ export function AICallingWorkspace({ contactId }: { contactId: string }) {
   }, [transcript]);
 
   const conversationObjective = useMemo(() => {
+    if (callSession?.objective) {
+      return callSession.objective;
+    }
     const industry = contact.industry || "their market";
     return `Qualify ${contact.company} for a practical website conversion review and book a follow-up with the owner. Focus on ${industry} demand, booking friction, urgency, and decision authority.`;
-  }, [contact]);
+  }, [callSession?.objective, contact]);
 
   useEffect(() => {
     if (loading || !contactId || contactId === fallbackContact.id) return;
+    if (callId) return;
     if (startedContactRef.current === contactId) return;
     startedContactRef.current = contactId;
 
@@ -321,7 +350,7 @@ export function AICallingWorkspace({ contactId }: { contactId: string }) {
     }
 
     startCall();
-  }, [contactId, conversationObjective, loading]);
+  }, [callId, contactId, conversationObjective, loading]);
 
   useEffect(() => {
     if (!callSession || callState === "ended") return;

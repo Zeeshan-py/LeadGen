@@ -10,6 +10,8 @@ import type {
   AISDRBulkActionResult,
   AISDRCallSession,
   AISDRContact,
+  AISDRCustomCallResponse,
+  AISDRCustomCallTarget,
   AISDRDashboard,
   AISDRDashboardParams,
   AISDRImportPayload,
@@ -81,6 +83,16 @@ export function startAISDROutboundCall(contactId: string, objective?: string) {
       contact_id: contactId,
       objective: objective ?? "",
       actor: "LeadForge user",
+    }),
+  });
+}
+
+export function startAISDRCustomTargetCall(payload: AISDRCustomCallTarget) {
+  return request<AISDRCustomCallResponse>("/ai-sdr/calls/custom-target", {
+    method: "POST",
+    body: JSON.stringify({
+      ...payload,
+      actor: payload.actor ?? "LeadForge user",
     }),
   });
 }

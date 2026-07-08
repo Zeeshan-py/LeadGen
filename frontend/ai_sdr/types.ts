@@ -207,3 +207,23 @@ export type AISDRCallSession = {
   ended_at: string | null;
   updated_at: string;
 };
+
+export type AISDRCustomCallTarget = {
+  business_name: string;
+  owner_name?: string;
+  phone: string;
+  email?: string;
+  website?: string;
+  instagram_url?: string;
+  industry?: string;
+  city?: string;
+  offer: string;
+  instructions: string;
+  notes?: string;
+  actor?: string;
+};
+
+export type AISDRCustomCallResponse = {
+  contact: AISDRContact;
+  call: AISDRCallSession;
+};

@@ -5,12 +5,15 @@
 FROM node:22-alpine AS frontend-builder
 
 WORKDIR /build
+ENV NEXT_TELEMETRY_DISABLED=1
 COPY frontend/package*.json ./
 RUN npm ci
 COPY frontend ./
-ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_API_URL=""
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
-RUN npm run build
+RUN npm run build \
+    && test -f /build/out/ai-sdr/index.html \
+    && test -f /build/out/ai-sdr/call/index.html
 
 FROM python:3.13-slim AS runtime
 

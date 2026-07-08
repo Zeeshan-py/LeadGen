@@ -22,7 +22,7 @@ Not allowed:
 - `types.ts` owns SDR source, batch, record, and contact contracts
 - `components/ai-sdr-workspace.tsx` owns the SDR workspace UI
 - `components/ai-calling-workspace.tsx` owns the full-screen mock AI Calling Workspace
-- `components/ai-calling-route.tsx` reads `contactId` from the static-export compatible call route
+- `components/ai-calling-route.tsx` reads `contactId` and optional `callId` from the static-export compatible call route
 - `../src/app/ai-sdr/page.tsx` mounts the module into the Next app
 - `../src/app/ai-sdr/call/page.tsx` mounts the calling workspace at `/ai-sdr/call?contactId=<crm_lead_id>`
 
@@ -32,7 +32,7 @@ The UI and contracts expose CSV, Excel, Google Sheets, Manual Entry, REST API, C
 
 ## Calling Workspace
 
-Clicking the Call action on a contact opens `/ai-sdr/call?contactId=<crm_lead_id>` as a full-screen workspace over the LeadForge shell.
+Clicking the Call action on a contact opens `/ai-sdr/call?contactId=<crm_lead_id>` as a full-screen workspace over the LeadForge shell. The custom target section can create a CRM contact from a business seen on another channel, attach a specific offer and user instructions, start a call session, and open `/ai-sdr/call?contactId=<crm_lead_id>&callId=<session_id>`.
 
 The workspace is UI-only and uses mock events. It does not import Twilio, start phone calls, or persist call transcripts yet.
 
