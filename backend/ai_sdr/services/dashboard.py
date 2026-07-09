@@ -119,8 +119,10 @@ class AISDRDashboardService:
 
     def _base_query(self) -> Select[tuple[Lead, AISDRContactRecord | None]]:
         latest_record_id = (
-            select(func.max(AISDRContactRecord.id))
+            select(AISDRContactRecord.id)
             .where(AISDRContactRecord.crm_lead_id == Lead.id)
+            .order_by(AISDRContactRecord.created_at.desc(), AISDRContactRecord.updated_at.desc())
+            .limit(1)
             .correlate(Lead)
             .scalar_subquery()
         )

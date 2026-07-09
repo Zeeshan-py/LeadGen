@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 import asyncio
 import unittest
 
 from sqlalchemy import create_engine, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
 from ai_sdr.calling.orchestrator import AISDRCallingOrchestrator
@@ -163,6 +165,46 @@ class AISDRTests(unittest.TestCase):
             self.assertEqual(dashboard.contacts[0].source, "excel")
             self.assertIn("Healthcare", dashboard.filters.industries)
             self.assertIn("San Francisco", dashboard.filters.cities)
+
+    def test_dashboard_uses_latest_contact_record_timestamp_for_uuid_ids(self) -> None:
+        with Session(self.engine) as db:
+            lead = Lead(
+                dedupe_key="domain:uuid-latest.example",
+                business_name="UUID Latest Co",
+                source="ai_sdr",
+            )
+            batch = AISDRContactBatch(source_type="manual_entry", status="completed")
+            db.add_all([lead, batch])
+            db.flush()
+
+            older = AISDRContactRecord(
+                batch_id=batch.id,
+                crm_lead_id=lead.id,
+                source_type="csv",
+                status="stored",
+                created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+            )
+            newer = AISDRContactRecord(
+                batch_id=batch.id,
+                crm_lead_id=lead.id,
+                source_type="rest_api",
+                status="stored",
+                created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                updated_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+            )
+            db.add_all([older, newer])
+            db.commit()
+
+            service = AISDRDashboardService(db)
+            compiled = str(service._base_query().compile(dialect=postgresql.dialect())).lower()
+            profile = service.get_contact(lead.id)
+
+            self.assertNotIn("max(", compiled)
+            self.assertIsNotNone(profile)
+            assert profile is not None
+            self.assertEqual(profile.source, "rest_api")
+            self.assertEqual(profile.source_record_id, newer.id)
 
     def test_bulk_delete_archives_contacts_out_of_default_dashboard(self) -> None:
         with Session(self.engine) as db:
