@@ -102,7 +102,7 @@ class AISDRSettings(BaseSettings):
         base = self.public_websocket_url
         if not base:
             base = self.public_url.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
-        return _join_url(base, self.api_prefix, "calls/twilio/media", query={"call_id": call_id})
+        return _join_url(base, self.api_prefix, "calls/twilio/media")
 
     def voice_webhook_url(self, call_id: str) -> str:
         return _join_url(self.public_url, self.api_prefix, "calls/twilio/voice", query={"call_id": call_id})

@@ -225,7 +225,7 @@ class AISDRTests(unittest.TestCase):
         )
         self.assertEqual(
             settings.media_stream_url("call-123"),
-            "wss://leadforage.up.railway.app/ai-sdr/calls/twilio/media?call_id=call-123",
+            "wss://leadforage.up.railway.app/ai-sdr/calls/twilio/media",
         )
 
     def test_ai_sdr_rejects_invalid_production_public_url(self) -> None:
@@ -269,7 +269,7 @@ class AISDRTests(unittest.TestCase):
             from_number="+13322864743",
             voice_webhook_url="https://leadforage.up.railway.app/ai-sdr/calls/twilio/voice?call_id=call-123",
             status_callback_url="https://leadforage.up.railway.app/ai-sdr/calls/twilio/status?call_id=call-123",
-            media_stream_url="wss://leadforage.up.railway.app/ai-sdr/calls/twilio/media?call_id=call-123",
+            media_stream_url="wss://leadforage.up.railway.app/ai-sdr/calls/twilio/media",
         )
 
         with self.assertLogs("ai_sdr.calling.providers.twilio_provider", level="INFO") as logs:
@@ -294,11 +294,24 @@ class AISDRTests(unittest.TestCase):
             from_number="+13322864743",
             voice_webhook_url="http://localhost:8000/ai-sdr/calls/twilio/voice?call_id=call-123",
             status_callback_url="https://leadforage.up.railway.app/ai-sdr/calls/twilio/status?call_id=call-123",
-            media_stream_url="wss://leadforage.up.railway.app/ai-sdr/calls/twilio/media?call_id=call-123",
+            media_stream_url="wss://leadforage.up.railway.app/ai-sdr/calls/twilio/media",
         )
 
         with self.assertRaisesRegex(ProviderConfigurationError, "absolute HTTPS URL"):
             asyncio.run(provider.start_outbound_call(request))
+
+    def test_twilio_voice_response_uses_stream_parameter_for_call_id(self) -> None:
+        provider = TwilioTelephonyProvider(AISDRSettings(_env_file=None))
+
+        twiml = provider.build_voice_response(
+            call_id="call-123",
+            media_stream_url="wss://leadforage.up.railway.app/ai-sdr/calls/twilio/media",
+        )
+
+        self.assertIn('url="wss://leadforage.up.railway.app/ai-sdr/calls/twilio/media"', twiml)
+        self.assertNotIn("?call_id=", twiml)
+        self.assertIn('name="call_id"', twiml)
+        self.assertIn('value="call-123"', twiml)
 
     def test_bulk_delete_archives_contacts_out_of_default_dashboard(self) -> None:
         with Session(self.engine) as db:

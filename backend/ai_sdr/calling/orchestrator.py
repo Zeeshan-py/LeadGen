@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -35,6 +36,9 @@ from ai_sdr.calling.silence import SilenceDetector
 from ai_sdr.config import AISDRSettings, get_ai_sdr_settings
 from app.database import SessionLocal
 from app.models import Lead
+
+
+logger = logging.getLogger(__name__)
 
 
 class AISDRCallingOrchestrator:
@@ -233,26 +237,35 @@ class AISDRCallingOrchestrator:
     async def handle_twilio_media_stream(self, websocket: WebSocket) -> None:
         await websocket.accept()
         call_id = str(websocket.query_params.get("call_id") or "")
-        session = self._require_session(call_id)
-        recognition = await self.providers.speech.create_recognition_session(call_id=session.id)
-        silence = SilenceDetector(
-            self.providers.speech,
-            timeout_seconds=self.settings.call_silence_timeout_seconds,
-        )
-        transcript_task = asyncio.create_task(self._consume_recognition(session, recognition, websocket))
+        session = self.registry.get(call_id) if call_id else None
+        recognition: Any | None = None
+        silence: SilenceDetector | None = None
+        transcript_task: asyncio.Task[None] | None = None
         try:
             async for payload in self._websocket_payloads(websocket):
                 media_event = self.providers.telephony.parse_media_event(payload)
                 if media_event.call_id:
                     session = self._require_session(media_event.call_id)
+                if session is None:
+                    if media_event.event_type == "start":
+                        raise LookupError("Twilio media stream did not include AI SDR call_id parameter.")
+                    continue
                 if media_event.provider_call_id and not session.provider_call_id:
                     self.registry.bind_provider_call(session, media_event.provider_call_id)
                 if media_event.stream_id:
                     session.stream_id = media_event.stream_id
                 if media_event.event_type == "start":
+                    recognition = await self.providers.speech.create_recognition_session(call_id=session.id)
+                    silence = SilenceDetector(
+                        self.providers.speech,
+                        timeout_seconds=self.settings.call_silence_timeout_seconds,
+                    )
+                    transcript_task = asyncio.create_task(self._consume_recognition(session, recognition, websocket))
                     await self._mark_connected(session)
                     await self._speak_next(websocket, session, interrupted=False)
                 elif media_event.event_type == "media":
+                    if session is None or recognition is None or silence is None:
+                        continue
                     is_voice, should_finalize = silence.observe(media_event.audio)
                     if is_voice:
                         session.last_customer_audio_at = utc_now()
@@ -265,13 +278,24 @@ class AISDRCallingOrchestrator:
                 elif media_event.event_type == "stop":
                     break
         except WebSocketDisconnect:
+            logger.info("AI SDR Twilio media stream disconnected call_id=%s", call_id or "<missing>")
             return
+        except Exception:
+            logger.exception(
+                "AI SDR Twilio media stream failed call_id=%s provider_call_id=%s",
+                session.id if session else call_id or "<missing>",
+                session.provider_call_id if session else "",
+            )
+            raise
         finally:
-            await recognition.close()
-            transcript_task.cancel()
-            with SessionLocal() as db:
-                if session.status not in {"completed", "failed"}:
-                    await self.complete_call(db, call_id=session.id, actor=self.settings.default_actor)
+            if recognition is not None:
+                await recognition.close()
+            if transcript_task is not None:
+                transcript_task.cancel()
+            if session is not None:
+                with SessionLocal() as db:
+                    if session.status not in {"completed", "failed"}:
+                        await self.complete_call(db, call_id=session.id, actor=self.settings.default_actor)
 
     async def _consume_recognition(
         self,
