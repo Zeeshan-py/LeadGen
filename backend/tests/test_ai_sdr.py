@@ -11,10 +11,11 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
-from ai_sdr.calling.interfaces import OutboundCallRequest, ProviderConfigurationError
+from ai_sdr.calling.interfaces import AIReasoningContext, CallOutcome, OutboundCallRequest, ProviderConfigurationError
 from ai_sdr.calling.orchestrator import AISDRCallingOrchestrator
 from ai_sdr.calling.providers.cartesia_provider import CartesiaSpeechProvider
 from ai_sdr.calling.providers.factory import CallingProviderStack
+from ai_sdr.calling.providers.gemini_provider import GeminiLLMProvider
 from ai_sdr.calling.providers.mock_provider import MockLLMProvider, MockSpeechProvider, MockTelephonyProvider
 from ai_sdr.calling.providers.twilio_provider import TwilioTelephonyProvider
 from ai_sdr.calling.session_manager import AISDRCallSessionRegistry
@@ -344,6 +345,23 @@ class AISDRTests(unittest.TestCase):
         self.assertIn('name="call_id"', twiml)
         self.assertIn('value="call-123"', twiml)
 
+    def test_gemini_provider_falls_back_when_streaming_json_fails(self) -> None:
+        class FakeModels:
+            def generate_content_stream(self, **kwargs: object):  # type: ignore[no-untyped-def]
+                def stream():  # type: ignore[no-untyped-def]
+                    raise RuntimeError("streaming rejected")
+                    yield None
+
+                return stream()
+
+            def generate_content(self, **kwargs: object) -> object:
+                return type("FakeResponse", (), {"text": '{"text":"Hello there."}'})()
+
+        provider = GeminiLLMProvider(AISDRSettings(_env_file=None, gemini_api_key="gemini-key"))
+        provider._client = type("FakeClient", (), {"models": FakeModels()})()
+
+        self.assertEqual(provider._generate_text("prompt", None), '{"text":"Hello there."}')
+
     def test_bulk_delete_archives_contacts_out_of_default_dashboard(self) -> None:
         with Session(self.engine) as db:
             response = AISDRIngestionService(db).ingest_contacts(
@@ -633,6 +651,61 @@ class AISDRTests(unittest.TestCase):
             self.assertEqual(facts["website_status"], "no website")
             self.assertIn("+447898529998", facts["phone_numbers"])
             self.assertIn("sam@example.com", facts["emails"])
+
+    def test_calling_orchestrator_uses_fallback_reply_when_llm_fails(self) -> None:
+        class FailingLLMProvider:
+            name = "failing"
+
+            async def generate_next_response(self, context: AIReasoningContext):  # type: ignore[no-untyped-def]
+                raise RuntimeError("llm unavailable")
+
+            async def summarize_call(self, context: AIReasoningContext) -> CallOutcome:
+                return CallOutcome(
+                    conversation_summary="Fallback summary.",
+                    qualification_score=0,
+                    interested=False,
+                    reason="Test summary.",
+                )
+
+        with Session(self.engine) as db:
+            lead = Lead(
+                dedupe_key="domain:fallback-llm.example",
+                business_name="Fallback Restaurant",
+                contact_name="Zeeshan",
+                phone="+923494362762",
+                city="Gujrat",
+                business_type="Restaurant",
+                source="ai_sdr",
+            )
+            db.add(lead)
+            db.commit()
+
+            orchestrator = AISDRCallingOrchestrator(
+                settings=AISDRSettings(_env_file=None, calling_mode="mock", twilio_validate_signature=False),
+                providers=CallingProviderStack(
+                    telephony=MockTelephonyProvider(),
+                    llm=FailingLLMProvider(),
+                    speech=MockSpeechProvider(),
+                ),
+                registry=AISDRCallSessionRegistry(),
+            )
+
+            async def run_call() -> dict[str, object]:
+                started = await orchestrator.start_outbound_call(db, contact_id=lead.id, actor="QA")
+                updated = await orchestrator.inject_transcript(
+                    db,
+                    call_id=started.id,
+                    role="customer",
+                    text="Hello, who is on the other side?",
+                    actor="QA",
+                )
+                return updated.to_dict()
+
+            session = asyncio.run(run_call())
+            ai_lines = [line for line in session["transcript"] if line["role"] == "ai"]
+            self.assertTrue(ai_lines)
+            self.assertIn("LeadForge", ai_lines[-1]["text"])
+            self.assertEqual(session["brain"]["provider"], "fallback")
 
     def test_cartesia_synthesis_stream_wrapper_yields_chunks(self) -> None:
         class FakeCartesiaSpeechProvider(CartesiaSpeechProvider):

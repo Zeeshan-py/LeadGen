@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from ai_sdr.calling.crm_call_gateway import AISDRCallCRMGateway
 from ai_sdr.calling.interfaces import (
     AIReasoningContext,
+    AIResponse,
     CallOutcome,
     OutboundCallRequest,
     ProviderConfigurationError,
@@ -207,7 +208,15 @@ class AISDRCallingOrchestrator:
             self._remember_customer_facts(session, segment.text)
         AISDRCallCRMGateway(db).record_transcript_segment(lead, session, segment, actor=actor)
         if role == "customer" and not session.ai_paused:
-            response = await self.providers.llm.generate_next_response(self._reasoning_context(lead, session))
+            context = self._reasoning_context(lead, session)
+            try:
+                response = await self.providers.llm.generate_next_response(context)
+            except Exception as exc:
+                logger.exception(
+                    "AI SDR LLM response generation failed during transcript injection; using fallback reply. call_id=%s",
+                    session.id,
+                )
+                response = self._fallback_ai_response(context, error=exc)
             session.update_brain(response)
             ai_segment = session.append_transcript(TranscriptSegment(role="ai", text=response.text))
             AISDRCallCRMGateway(db).record_transcript_segment(lead, session, ai_segment, actor=actor)
@@ -354,9 +363,15 @@ class AISDRCallingOrchestrator:
     async def _speak_next(self, websocket: WebSocket, session: AISDRCallSession, *, interrupted: bool) -> None:
         with SessionLocal() as db:
             lead = self._require_lead(db, session.contact_id)
-            response = await self.providers.llm.generate_next_response(
-                self._reasoning_context(lead, session, interrupted=interrupted)
-            )
+            context = self._reasoning_context(lead, session, interrupted=interrupted)
+            try:
+                response = await self.providers.llm.generate_next_response(context)
+            except Exception as exc:
+                logger.exception(
+                    "AI SDR LLM response generation failed; using fallback reply. call_id=%s",
+                    session.id,
+                )
+                response = self._fallback_ai_response(context, error=exc)
             session.update_brain(response)
             segment = session.append_transcript(TranscriptSegment(role="ai", text=response.text))
             AISDRCallCRMGateway(db).record_transcript_segment(
@@ -369,6 +384,34 @@ class AISDRCallingOrchestrator:
         await self._send_speech(websocket, session, response.text)
         if response.should_end_call:
             await self.providers.telephony.end_call(session.provider_call_id)
+
+    @staticmethod
+    def _fallback_ai_response(context: AIReasoningContext, *, error: Exception) -> AIResponse:
+        customer_turns = [segment.text.lower() for segment in context.transcript if segment.role == "customer"]
+        latest = customer_turns[-1] if customer_turns else ""
+        if any(token in latest for token in ("bye", "goodbye", "stop calling", "not interested")):
+            text = "No problem. Thanks for your time, and have a good day."
+            should_end = True
+            stage = "Goodbye"
+        elif any(token in latest for token in ("who is", "who are", "other side", "hello")):
+            text = f"Hi, this is Ava with LeadForge, calling about {context.business_name}. Can I ask one quick question?"
+            should_end = False
+            stage = "Opening"
+        else:
+            text = f"Thanks. For {context.business_name}, what is the main way customers contact you now?"
+            should_end = False
+            stage = "Discovery"
+        return AIResponse(
+            text=text,
+            current_goal="Keep the call moving with a short fallback reply.",
+            conversation_stage=stage,
+            detected_objection="None detected",
+            customer_sentiment="Neutral",
+            qualification_score=30,
+            suggested_next_action="Recover the conversation and ask one simple question.",
+            should_end_call=should_end,
+            metadata={"provider": "fallback", "error": str(error)},
+        )
 
     async def _send_speech(self, websocket: WebSocket, session: AISDRCallSession, text: str) -> None:
         if session.ai_paused or not session.stream_id:

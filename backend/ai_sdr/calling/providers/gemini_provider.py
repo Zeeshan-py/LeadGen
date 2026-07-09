@@ -108,7 +108,12 @@ class GeminiLLMProvider(LLMProvider):
         except (AttributeError, TypeError):
             stream = None
         if stream is not None:
-            return "".join(str(getattr(chunk, "text", "") or "") for chunk in stream)
+            try:
+                return "".join(str(getattr(chunk, "text", "") or "") for chunk in stream)
+            except Exception:
+                # Some Gemini configurations can reject streaming JSON. Fall back
+                # to normal generation instead of letting the live call go silent.
+                pass
         response = self._client.models.generate_content(
             model=self.settings.gemini_model,
             contents=prompt,
