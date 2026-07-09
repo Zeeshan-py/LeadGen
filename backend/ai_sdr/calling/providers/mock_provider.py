@@ -21,6 +21,7 @@ from ai_sdr.calling.interfaces import (
     TelephonyProvider,
     TranscriptSegment,
 )
+from ai_sdr.conversation.response_validator import ResponseValidator
 
 
 class MockTelephonyProvider(TelephonyProvider):
@@ -71,15 +72,17 @@ class MockLLMProvider(LLMProvider):
 
     name = "mock"
 
+    def __init__(self) -> None:
+        self.response_validator = ResponseValidator()
+
     async def generate_next_response(self, context: AIReasoningContext) -> AIResponse:
         latest_customer = next((line.text for line in reversed(context.transcript) if line.role == "customer"), "")
         interested = any(word in latest_customer.lower() for word in ("yes", "open", "interested", "send", "useful"))
+        text = self.response_validator.validate(
+            f"That helps for {context.business_name}. Would a short review of the website and follow-up flow be useful?"
+        )
         return AIResponse(
-            text=(
-                f"That is helpful context for {context.business_name}. "
-                f"I am calling about this: {context.objective[:220]} "
-                "Would it make sense to look at the next step together?"
-            ),
+            text=text,
             current_goal="Qualify need and secure the next step.",
             conversation_stage="Closing" if interested else "Discovery",
             detected_objection="None detected",

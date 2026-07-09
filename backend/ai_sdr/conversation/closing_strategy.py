@@ -13,19 +13,19 @@ class ClosingStrategy:
         business = memory.company.business_name
         if qualification.is_qualified:
             return (
-                f"Based on what you shared, I think a focused review for {business} would be worth the time. "
-                "Would tomorrow afternoon or the next morning be easier for a 15-minute look at the website and follow-up flow?"
+                f"A focused review for {business} sounds worth it. "
+                "Would tomorrow afternoon or the next morning suit a 15-minute look?"
             )
         return (
-            f"It sounds like there may be something useful here for {business}, but I would want to understand one more piece first. "
-            "What would make this worth a short follow-up conversation for you?"
+            f"There may be something useful for {business}. "
+            "What would make a short follow-up worth your time?"
         )
 
     def follow_up_prompt(self, memory: ConversationMemory) -> str:
         channel = "email" if memory.owner.email else "a short note"
         return (
-            f"I will keep it practical and send {channel} with the main points for {memory.company.business_name}. "
-            "If it looks relevant, we can turn that into a quick review instead of a long sales call."
+            f"I will send {channel} with the practical points for {memory.company.business_name}. "
+            "If it looks relevant, we can make it a quick review."
         )
 
     def goodbye(self, memory: ConversationMemory) -> str:

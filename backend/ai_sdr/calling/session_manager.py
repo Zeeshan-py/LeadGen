@@ -29,6 +29,7 @@ class AISDRCallSession:
     speech_provider: str = ""
     transcript: list[TranscriptSegment] = field(default_factory=list)
     brain: dict[str, Any] = field(default_factory=dict)
+    memory: dict[str, Any] = field(default_factory=dict)
     outcome: CallOutcome | None = None
     ai_paused: bool = False
     muted: bool = False
@@ -90,6 +91,7 @@ class AISDRCallSession:
             "muted": self.muted,
             "transfer_requested": self.transfer_requested,
             "brain": self.brain,
+            "memory": self.memory,
             "outcome": self.outcome.__dict__ if self.outcome else None,
             "transcript": [
                 {

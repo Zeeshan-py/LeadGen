@@ -13,54 +13,53 @@ class SalesStrategy:
     def greeting(self, company: CompanyInformation, owner: OwnerInformation) -> str:
         location = f" in {company.location_phrase}" if company.location_phrase else ""
         previous = company.previous_interaction_reference()
-        previous_line = f" I also saw the note that {previous.lower()}" if previous else ""
+        previous_line = f", and that {previous.lower()}" if previous else ""
         return (
-            f"Hi {owner.display_name}, this is Ava with LeadForge. I was looking at {company.business_name}, "
-            f"especially the {company.industry_phrase} work you do{location}.{previous_line} "
+            f"Hi {owner.display_name}, Ava with LeadForge. I saw {company.business_name}, "
+            f"the {company.industry_phrase} work{location}{previous_line}. "
             "Did I catch you with half a minute?"
         )
 
     def permission_reply(self, memory: ConversationMemory) -> str:
-        context = memory.company.website_reference()
         return (
-            f"Thanks. I will keep it brief. {context} "
-            "I am trying to understand whether there is a practical way to help more interested visitors turn into real conversations."
+            f"Thanks. For {memory.company.business_name}, I'll keep this practical and focus on whether "
+            "visitors can become real enquiries."
         )
 
     def discovery_reply(self, memory: ConversationMemory, customer_message: str) -> str:
         need = self._summarize_need(customer_message)
         if need:
             return (
-                f"That makes sense. If {memory.company.business_name} is already seeing {need}, "
-                "the important question is where the process is leaking: the website, the follow-up, or the booking step."
+                f"That makes sense. If {memory.company.business_name} is seeing {need}, "
+                "we should find the exact step that leaks."
             )
         return (
-            f"Got it. For a {memory.company.industry_phrase} business like {memory.company.business_name}, "
-            "I usually look for one simple gap: are people finding you but not taking the next step?"
+            f"Got it. For {memory.company.business_name}, I am listening for one gap: "
+            "people finding you but not taking the next step."
         )
 
     def website_discussion(self, memory: ConversationMemory) -> str:
         website = memory.company.website
         if website:
             return (
-                f"Looking at {website}, I would focus less on making it prettier and more on whether each page gives a clear next step. "
-                "A small conversion gap can matter if the traffic is already there."
+                f"With {website}, I would check whether every page gives a clear next step, "
+                "not just whether it looks polished."
             )
         return (
-            "Since I do not have a website recorded, I would first confirm your main online presence and then look at whether people "
-            "have an easy path to contact you."
+            "Since no website is recorded, I would first confirm where people see you online "
+            "and whether contacting you feels easy."
         )
 
     def automation_discussion(self, memory: ConversationMemory) -> str:
         return (
-            "The automation side is usually simple: respond quickly, route the right inquiries, and follow up without making your team "
-            "babysit every lead. The point is not to replace judgment; it is to keep good opportunities from going quiet."
+            "The automation piece is simple: reply quickly, route serious enquiries, and stop good opportunities "
+            "from going quiet."
         )
 
     def pricing_discussion(self, memory: ConversationMemory) -> str:
         return (
-            "On pricing, I would rather anchor it to the actual opportunity than toss out a generic package. "
-            f"If {memory.company.business_name} is losing even a few good inquiries a month, the math is different than if everything is already tight."
+            "Pricing depends on the pages, 3D work, and follow-up needed. "
+            f"For {memory.company.business_name}, I would price it after seeing the real conversion gap."
         )
 
     def bridge_to_question(self, statement: str, question: str) -> str:

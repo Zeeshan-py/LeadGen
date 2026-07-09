@@ -13,13 +13,16 @@ from sqlalchemy.orm import Session
 
 from ai_sdr.calling.interfaces import OutboundCallRequest, ProviderConfigurationError
 from ai_sdr.calling.orchestrator import AISDRCallingOrchestrator
+from ai_sdr.calling.providers.cartesia_provider import CartesiaSpeechProvider
 from ai_sdr.calling.providers.factory import CallingProviderStack
 from ai_sdr.calling.providers.mock_provider import MockLLMProvider, MockSpeechProvider, MockTelephonyProvider
 from ai_sdr.calling.providers.twilio_provider import TwilioTelephonyProvider
 from ai_sdr.calling.session_manager import AISDRCallSessionRegistry
 from ai_sdr.config import AISDRSettings
 from ai_sdr.conversation import AISDRConversationManager, ConversationState
+from ai_sdr.conversation.memory_extractor import SalesMemoryExtractor
 from ai_sdr.conversation.memory_manager import ConversationMemoryManager
+from ai_sdr.conversation.response_validator import ResponseValidator
 from ai_sdr.models import AISDRContactBatch, AISDRContactRecord
 from ai_sdr.schemas import AISDRContactInput, AISDRImportCreate, AISDRSourceType
 from ai_sdr.services.dashboard import AISDRDashboardService
@@ -110,6 +113,34 @@ class AISDRTests(unittest.TestCase):
             text = path.read_text(encoding="utf-8")
             for token in forbidden:
                 self.assertNotIn(token, text, f"{path} imports or references {token}")
+
+    def test_ai_sdr_response_validator_limits_spoken_replies(self) -> None:
+        validator = ResponseValidator()
+        reply = validator.validate(
+            """
+            - First, here is a very long explanation about a possible website, automation, pricing,
+              integrations, follow-up, conversion, booking, design, pages, maps, analytics, forms,
+              and many other details that would sound too heavy on a phone call.
+            - Second, another point.
+            """
+        )
+
+        self.assertLessEqual(validator.word_count(reply), 40)
+        self.assertLessEqual(validator.sentence_count(reply), 3)
+        self.assertFalse(reply.strip().startswith("-"))
+        self.assertNotIn("\n", reply)
+
+    def test_ai_sdr_memory_extractor_preserves_contact_details(self) -> None:
+        facts = SalesMemoryExtractor().extract(
+            "My name is Zain Ali. My number is +44 7898 529998, email is Test@Example.com, "
+            "and the website is greyarchitect.co.uk."
+        )
+
+        self.assertEqual(facts.customer_name, "Zain Ali")
+        self.assertIn("+447898529998", facts.phone_numbers)
+        self.assertIn("test@example.com", facts.emails)
+        self.assertIn("https://greyarchitect.co.uk", facts.websites)
+        self.assertNotIn("https://Example.com", facts.websites)
 
     def test_invalid_contact_is_tracked_without_crm_write(self) -> None:
         with Session(self.engine) as db:
@@ -472,6 +503,34 @@ class AISDRTests(unittest.TestCase):
         self.assertIn("booking friction", pricing["memory"]["discovered_needs"])
         self.assertTrue(any(event["event_type"] == "objection_detected" for event in pricing["events"]))
 
+    def test_conversation_engine_keeps_replies_short_and_remembers_facts(self) -> None:
+        validator = ResponseValidator()
+        manager = AISDRConversationManager(memory_manager=ConversationMemoryManager())
+        started = manager.start_from_context(
+            company_payload={
+                "business_name": "Grey Architect",
+                "industry": "Architecture Firm",
+                "city": "Nottingham",
+                "website": "",
+            },
+            owner_payload={"name": "Zain"},
+        )
+
+        permission = manager.receive_customer_message(started["session_id"], "Yes, go ahead.")
+        assert permission is not None
+        response = manager.receive_customer_message(
+            started["session_id"],
+            "We have no website. My number is +44 7898 529998 and email is zain@example.com.",
+        )
+
+        self.assertIsNotNone(response)
+        assert response is not None
+        self.assertLessEqual(validator.word_count(response["reply"]), 40)
+        facts = response["memory"]["facts"]
+        self.assertEqual(facts["website_status"], "no website")
+        self.assertIn("+447898529998", facts["phone_numbers"])
+        self.assertIn("zain@example.com", facts["emails"])
+
     def test_calling_orchestrator_stores_transcript_and_outcome_in_crm(self) -> None:
         with Session(self.engine) as db:
             lead = Lead(
@@ -532,6 +591,70 @@ class AISDRTests(unittest.TestCase):
             self.assertIn("ai_sdr_call_started", activity_types)
             self.assertIn("ai_sdr_call_transcript", activity_types)
             self.assertIn("ai_sdr_call_completed", activity_types)
+
+    def test_calling_orchestrator_remembers_live_customer_facts(self) -> None:
+        with Session(self.engine) as db:
+            lead = Lead(
+                dedupe_key="domain:live-memory.example",
+                business_name="Live Memory Studio",
+                contact_name="Sam Owner",
+                phone="+14155550123",
+                email="sam@live-memory.example",
+                city="Austin",
+                business_type="Architecture",
+                source="ai_sdr",
+            )
+            db.add(lead)
+            db.commit()
+
+            orchestrator = AISDRCallingOrchestrator(
+                settings=AISDRSettings(_env_file=None, calling_mode="mock", twilio_validate_signature=False),
+                providers=CallingProviderStack(
+                    telephony=MockTelephonyProvider(),
+                    llm=MockLLMProvider(),
+                    speech=MockSpeechProvider(),
+                ),
+                registry=AISDRCallSessionRegistry(),
+            )
+
+            async def run_call() -> dict[str, object]:
+                started = await orchestrator.start_outbound_call(db, contact_id=lead.id, actor="QA")
+                updated = await orchestrator.inject_transcript(
+                    db,
+                    call_id=started.id,
+                    role="customer",
+                    text="My number is +44 7898 529998 and email is sam@example.com. We have no website.",
+                    actor="QA",
+                )
+                return updated.to_dict()
+
+            session = asyncio.run(run_call())
+            facts = session["memory"]["facts"]
+            self.assertEqual(facts["website_status"], "no website")
+            self.assertIn("+447898529998", facts["phone_numbers"])
+            self.assertIn("sam@example.com", facts["emails"])
+
+    def test_cartesia_synthesis_stream_wrapper_yields_chunks(self) -> None:
+        class FakeCartesiaSpeechProvider(CartesiaSpeechProvider):
+            def _synthesize_sync(self, text: str):  # type: ignore[no-untyped-def]
+                yield b"one"
+                yield b"two"
+
+        provider = FakeCartesiaSpeechProvider(
+            AISDRSettings(
+                _env_file=None,
+                cartesia_api_key="cartesia-key",
+                cartesia_voice_id="voice-id",
+            )
+        )
+
+        async def collect() -> list[bytes]:
+            chunks: list[bytes] = []
+            async for chunk in provider.synthesize_stream(text="Hello", call_id="call-123"):
+                chunks.append(chunk)
+            return chunks
+
+        self.assertEqual(asyncio.run(collect()), [b"one", b"two"])
 
 
 if __name__ == "__main__":

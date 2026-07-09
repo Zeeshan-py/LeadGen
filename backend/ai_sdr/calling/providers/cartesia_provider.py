@@ -6,7 +6,7 @@ import asyncio
 import json
 import math
 import threading
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 from urllib.parse import urlencode
 
@@ -69,7 +69,7 @@ class CartesiaSpeechProvider(SpeechProvider):
         values = [abs(byte - 128) for byte in audio[:320]]
         return (sum(values) / max(1, len(values))) < 4
 
-    def _synthesize_sync(self, text: str) -> list[bytes]:
+    def _synthesize_sync(self, text: str) -> Iterator[bytes]:
         try:
             from cartesia import Cartesia
         except ImportError as exc:
@@ -86,7 +86,6 @@ class CartesiaSpeechProvider(SpeechProvider):
             "encoding": self.settings.cartesia_tts_encoding,
             "sample_rate": self.settings.cartesia_tts_sample_rate,
         }
-        chunks: list[bytes] = []
         with client.tts.websocket_connect() as websocket:
             context = websocket.context(
                 model_id=self.settings.cartesia_tts_model,
@@ -98,8 +97,12 @@ class CartesiaSpeechProvider(SpeechProvider):
             for event in context.receive():
                 audio = getattr(event, "audio", None)
                 if getattr(event, "type", "") == "chunk" and audio:
-                    chunks.append(audio)
-        return chunks
+                    yield audio
+                elif getattr(event, "type", "") == "error":
+                    error = getattr(event, "error", None) or "Cartesia TTS stream returned an error."
+                    raise RuntimeError(str(error))
+                elif getattr(event, "type", "") == "done" or getattr(event, "done", False):
+                    break
 
     @staticmethod
     def _mulaw_rms(audio: bytes) -> float:

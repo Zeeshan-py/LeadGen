@@ -14,6 +14,8 @@ from ai_sdr.calling.interfaces import (
     ProviderConfigurationError,
 )
 from ai_sdr.config import AISDRSettings
+from ai_sdr.conversation.prompt_builder import PromptBuilder
+from ai_sdr.conversation.response_validator import ResponseValidator
 
 
 class GeminiLLMProvider(LLMProvider):
@@ -24,20 +26,31 @@ class GeminiLLMProvider(LLMProvider):
     def __init__(self, settings: AISDRSettings) -> None:
         self.settings = settings
         self._client: Any | None = None
+        self.prompt_builder = PromptBuilder()
+        self.response_validator = ResponseValidator()
 
     async def generate_next_response(self, context: AIReasoningContext) -> AIResponse:
         prompt = self._next_response_prompt(context)
         raw = await asyncio.to_thread(self._generate_json, prompt)
+        text = self.response_validator.validate(
+            str(raw.get("text") or self._fallback_text(context)),
+            fallback=self._fallback_text(context),
+        )
         return AIResponse(
-            text=str(raw.get("text") or self._fallback_text(context)),
+            text=text,
             current_goal=str(raw.get("current_goal") or "Keep the conversation useful and concise."),
             conversation_stage=str(raw.get("conversation_stage") or "Discovery"),
             detected_objection=str(raw.get("detected_objection") or "None detected"),
             customer_sentiment=str(raw.get("customer_sentiment") or "Neutral"),
             qualification_score=self._bounded_score(raw.get("qualification_score")),
             suggested_next_action=str(raw.get("suggested_next_action") or "Ask one focused follow-up question."),
-            should_end_call=bool(raw.get("should_end_call") or False),
-            metadata={"provider": self.name, "model": self.settings.gemini_model, "raw": raw},
+            should_end_call=self._bool_value(raw.get("should_end_call")),
+            metadata={
+                "provider": self.name,
+                "model": self.settings.gemini_model,
+                "raw": raw,
+                "spoken_word_count": self.response_validator.word_count(text),
+            },
         )
 
     async def summarize_call(self, context: AIReasoningContext) -> CallOutcome:
@@ -77,54 +90,34 @@ class GeminiLLMProvider(LLMProvider):
             )
         except Exception:
             config = None
-        response = self._client.models.generate_content(
-            model=self.settings.gemini_model,
-            contents=prompt,
-            config=config,
-        )
-        text = str(getattr(response, "text", "") or "")
+        text = self._generate_text(prompt, config)
         try:
             parsed = json.loads(text)
         except json.JSONDecodeError:
             parsed = self._extract_json_object(text)
         return parsed if isinstance(parsed, dict) else {}
 
+    def _generate_text(self, prompt: str, config: Any | None) -> str:
+        assert self._client is not None
+        try:
+            stream = self._client.models.generate_content_stream(
+                model=self.settings.gemini_model,
+                contents=prompt,
+                config=config,
+            )
+        except (AttributeError, TypeError):
+            stream = None
+        if stream is not None:
+            return "".join(str(getattr(chunk, "text", "") or "") for chunk in stream)
+        response = self._client.models.generate_content(
+            model=self.settings.gemini_model,
+            contents=prompt,
+            config=config,
+        )
+        return str(getattr(response, "text", "") or "")
+
     def _next_response_prompt(self, context: AIReasoningContext) -> str:
-        transcript = self._transcript_text(context)
-        interrupted = "The customer interrupted the previous AI response." if context.interrupted else ""
-        return f"""
-You are the LeadForge AI SDR on a live sales call. Sound like a professional human sales representative:
-- natural, concise, consultative, and never robotic
-- honest if asked whether you are AI
-- one short response at a time
-- reference relevant context only when it helps
-- never mention Lead Generator or any lead generation module
-- if the objective includes user instructions or a specific offer, follow them as the primary talk track
-- do not invent services, prices, discounts, or guarantees beyond the provided offer
-
-Business: {context.business_name}
-Owner/contact: {context.owner_name}
-Industry: {context.industry}
-City: {context.city}
-Website: {context.website}
-Objective: {context.objective}
-{interrupted}
-
-Transcript so far:
-{transcript}
-
-Return only JSON with:
-{{
-  "text": "next spoken sentence or two",
-  "current_goal": "current goal",
-  "conversation_stage": "Greeting | Permission | Discovery | Qualification | Website Discussion | AI Automation Discussion | Pricing | Objection Handling | Closing | Follow-up | Goodbye",
-  "detected_objection": "objection or None detected",
-  "customer_sentiment": "Positive | Interested | Engaged | Neutral | Concerned | Negative",
-  "qualification_score": 0,
-  "suggested_next_action": "operator-facing next action",
-  "should_end_call": false
-}}
-"""
+        return self.prompt_builder.next_response_prompt(context)
 
     def _summary_prompt(self, context: AIReasoningContext) -> str:
         return f"""
@@ -181,6 +174,14 @@ Return only JSON with:
         return max(0, min(100, score))
 
     @staticmethod
+    def _bool_value(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "yes", "1"}
+        return bool(value)
+
+    @staticmethod
     def _string_list(value: Any) -> list[str]:
         if not isinstance(value, list):
             return []
@@ -188,10 +189,7 @@ Return only JSON with:
 
     @staticmethod
     def _fallback_text(context: AIReasoningContext) -> str:
-        return (
-            f"That makes sense. For {context.business_name}, what would make this worth "
-            "a short follow-up with the owner?"
-        )
+        return f"That makes sense. For {context.business_name}, what would make a short follow-up worth your time?"
 
     @staticmethod
     def _fallback_summary(context: AIReasoningContext) -> str:

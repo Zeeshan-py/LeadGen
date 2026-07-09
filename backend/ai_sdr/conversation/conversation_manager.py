@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from ai_sdr.conversation.closing_strategy import ClosingStrategy
 from ai_sdr.conversation.company_information import CompanyInformation
+from ai_sdr.conversation.memory_extractor import SalesMemoryExtractor
 from ai_sdr.conversation.memory_manager import (
     ConversationMemory,
     ConversationMemoryManager,
@@ -23,6 +24,7 @@ from ai_sdr.conversation.memory_manager import (
 from ai_sdr.conversation.objection_handler import ObjectionHandler, ObjectionResult
 from ai_sdr.conversation.owner_information import OwnerInformation
 from ai_sdr.conversation.qualification import QualificationEngine, QualificationResult
+from ai_sdr.conversation.response_validator import ResponseValidator
 from ai_sdr.conversation.sales_strategy import SalesStrategy
 from app.models import Lead, LeadActivity
 
@@ -66,12 +68,16 @@ class AISDRConversationManager:
         objection_handler: ObjectionHandler | None = None,
         qualification_engine: QualificationEngine | None = None,
         closing_strategy: ClosingStrategy | None = None,
+        memory_extractor: SalesMemoryExtractor | None = None,
+        response_validator: ResponseValidator | None = None,
     ) -> None:
         self.memory = memory_manager or default_memory_manager
         self.sales = sales_strategy or SalesStrategy()
         self.objections = objection_handler or ObjectionHandler()
         self.qualification = qualification_engine or QualificationEngine()
         self.closing = closing_strategy or ClosingStrategy()
+        self.memory_extractor = memory_extractor or SalesMemoryExtractor()
+        self.response_validator = response_validator or ResponseValidator()
 
     def start_for_contact(self, db: Session, contact_id: str) -> dict[str, Any] | None:
         """Start a conversation from an existing CRM contact."""
@@ -113,7 +119,7 @@ class AISDRConversationManager:
             owner=owner,
             initial_state=ConversationState.GREETING.value,
         )
-        reply = self.sales.greeting(company, owner)
+        reply = self._validated_reply(self.sales.greeting(company, owner))
         self._record_ai(memory, ConversationState.GREETING, reply, event_type="ai_message")
         self.memory.change_state(
             memory,
@@ -149,7 +155,7 @@ class AISDRConversationManager:
 
         if self._is_goodbye(cleaned):
             self.memory.change_state(memory, ConversationState.GOODBYE.value, reason="Customer ended the conversation.")
-            reply = self.closing.goodbye(memory)
+            reply = self._validated_reply(self.closing.goodbye(memory))
             self._record_ai(memory, ConversationState.GOODBYE, reply)
             return self._response(memory, reply=reply)
 
@@ -183,19 +189,21 @@ class AISDRConversationManager:
             metadata=objection.to_dict(),
         )
         if objection.code == "ai_identity":
+            reply = self._validated_reply(objection.reply)
             self.memory.append_event(
                 memory,
                 event_type="identity_disclosure",
                 role="ai",
                 state=memory.state,
-                text=objection.reply,
+                text=reply,
                 metadata={"honest_ai_disclosure": True},
             )
-            return self._response(memory, reply=objection.reply)
+            return self._response(memory, reply=reply)
         next_state = ConversationState.PRICING if objection.code == "pricing" else ConversationState.OBJECTION_HANDLING
         self.memory.change_state(memory, next_state.value, reason=f"Detected objection: {objection.label}.")
-        self._record_ai(memory, next_state, objection.reply)
-        return self._response(memory, reply=objection.reply)
+        reply = self._validated_reply(objection.reply)
+        self._record_ai(memory, next_state, reply)
+        return self._response(memory, reply=reply)
 
     def _next_state(
         self,
@@ -237,39 +245,39 @@ class AISDRConversationManager:
         qualification: QualificationResult,
     ) -> str:
         if state == ConversationState.DISCOVERY:
-            return self.sales.bridge_to_question(
+            return self._validated_reply(self.sales.bridge_to_question(
                 self.sales.permission_reply(memory),
                 self.qualification.discovery_question(memory),
-            )
+            ))
         if state == ConversationState.QUALIFICATION:
-            return self.sales.bridge_to_question(
+            return self._validated_reply(self.sales.bridge_to_question(
                 self.sales.discovery_reply(memory, message),
                 self.qualification.qualification_question(memory),
-            )
+            ))
         if state == ConversationState.WEBSITE_DISCUSSION:
-            return self.sales.bridge_to_question(
+            return self._validated_reply(self.sales.bridge_to_question(
                 self.sales.website_discussion(memory),
                 "Does that match what you see from customers today?",
-            )
+            ))
         if state == ConversationState.AI_AUTOMATION_DISCUSSION:
-            return self.sales.bridge_to_question(
+            return self._validated_reply(self.sales.bridge_to_question(
                 self.sales.automation_discussion(memory),
                 "Where does follow-up currently slow down for your team?",
-            )
+            ))
         if state == ConversationState.PRICING:
-            return self.sales.bridge_to_question(
+            return self._validated_reply(self.sales.bridge_to_question(
                 self.sales.pricing_discussion(memory),
                 "Would you want to judge it against missed opportunities rather than a generic feature list?",
-            )
+            ))
         if state == ConversationState.CLOSING:
-            return self.closing.next_step_prompt(memory, qualification)
+            return self._validated_reply(self.closing.next_step_prompt(memory, qualification))
         if state == ConversationState.FOLLOW_UP:
-            return self.closing.follow_up_prompt(memory)
+            return self._validated_reply(self.closing.follow_up_prompt(memory))
         if state == ConversationState.GOODBYE:
-            return self.closing.goodbye(memory)
+            return self._validated_reply(self.closing.goodbye(memory))
         if state == ConversationState.OBJECTION_HANDLING:
-            return "I hear you. What would make this conversation useful enough to continue for one more minute?"
-        return self.sales.permission_reply(memory)
+            return self._validated_reply("I hear you. What would make this useful enough to continue for one more minute?")
+        return self._validated_reply(self.sales.permission_reply(memory))
 
     def _emit_guidance(
         self,
@@ -295,6 +303,7 @@ class AISDRConversationManager:
         )
 
     def _extract_memory(self, memory: ConversationMemory, message: str) -> None:
+        self.memory.remember_facts(memory, self.memory_extractor.extract(message))
         text = message.lower()
         for keyword, need in (
             ("booking", "booking friction"),
@@ -313,6 +322,9 @@ class AISDRConversationManager:
             self.memory.remember_topic(memory, "ai automation")
         if "price" in text or "cost" in text or "budget" in text:
             self.memory.remember_topic(memory, "pricing")
+
+    def _validated_reply(self, reply: str) -> str:
+        return self.response_validator.validate(reply)
 
     def _record_ai(
         self,

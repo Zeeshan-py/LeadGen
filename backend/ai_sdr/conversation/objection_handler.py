@@ -43,9 +43,8 @@ class ObjectionHandler:
                 label="Asked if AI",
                 severity="low",
                 reply=(
-                    "Yes, I am an AI assistant for LeadForge, not a human pretending otherwise. "
-                    f"I am using the information we have about {memory.company.business_name} to see whether a short website "
-                    "and automation review would be useful. You can ask me to stop at any point."
+                    f"Yes, I am an AI assistant for LeadForge. I am calling about {memory.company.business_name} "
+                    "to see if a short website review is useful, and you can ask me to stop."
                 ),
             )
         if any(token in text for token in ("not interested", "no interest", "don't need", "do not need")):
@@ -54,8 +53,8 @@ class ObjectionHandler:
                 label="Not interested",
                 severity="medium",
                 reply=(
-                    "That is completely fair. Before I let you go, is that because this is already handled, "
-                    "or because improving the website and follow-up process is not a priority right now?"
+                    "That is completely fair. Is it already handled, or is improving the website "
+                    "not a priority right now?"
                 ),
             )
         if any(token in text for token in ("busy", "bad time", "meeting", "later", "call me back")):
@@ -64,8 +63,7 @@ class ObjectionHandler:
                 label="Busy right now",
                 severity="low",
                 reply=(
-                    "No problem. I can keep it simple: would it be better to send a quick note, or should I follow up "
-                    "another day when you have a little more room?"
+                    "No problem. Should I send a quick note, or follow up another day when you have more room?"
                 ),
             )
         if any(token in text for token in ("cost", "price", "pricing", "expensive", "budget")):
@@ -74,9 +72,8 @@ class ObjectionHandler:
                 label="Pricing concern",
                 severity="medium",
                 reply=(
-                    "Totally reasonable to ask. Pricing depends on the workflow, so I would not want to throw out a random number. "
-                    f"The useful first step is a short review of {memory.company.business_name}'s current conversion and follow-up gaps, "
-                    "then you can decide whether the economics make sense."
+                    "Pricing depends on the pages, 3D work, and follow-up needed. "
+                    f"For {memory.company.business_name}, I would first check the conversion gap, then quote properly."
                 ),
             )
         if any(token in text for token in ("send info", "email me", "send me", "information")):
@@ -85,8 +82,8 @@ class ObjectionHandler:
                 label="Requests information",
                 severity="low",
                 reply=(
-                    "I can do that. To make it relevant instead of generic, what should I focus the note on: "
-                    "website conversion, missed follow-ups, booking automation, or lead quality?"
+                    "I can do that. Should the note focus on website conversion, missed follow-up, "
+                    "booking, or lead quality?"
                 ),
             )
         return ObjectionResult(code="", label="", severity="", reply="")

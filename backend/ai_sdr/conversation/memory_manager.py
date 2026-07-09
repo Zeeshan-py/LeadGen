@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from ai_sdr.conversation.company_information import CompanyInformation
+from ai_sdr.conversation.memory_extractor import ExtractedFacts
 from ai_sdr.conversation.owner_information import OwnerInformation
 
 
@@ -64,6 +65,7 @@ class ConversationMemory:
     objections: list[str] = field(default_factory=list)
     qualification_notes: dict[str, Any] = field(default_factory=dict)
     quoted_topics: list[str] = field(default_factory=list)
+    facts: ExtractedFacts = field(default_factory=ExtractedFacts)
     created_at: datetime = field(default_factory=utc_now)
     updated_at: datetime = field(default_factory=utc_now)
 
@@ -94,6 +96,7 @@ class ConversationMemory:
             "objections": self.objections,
             "qualification": self.qualification_notes,
             "quoted_topics": self.quoted_topics,
+            "facts": self.facts.to_dict(),
             "previous_interactions": self.company.previous_interactions,
             "event_count": len(self.events),
             "updated_at": self.updated_at.isoformat(),
@@ -195,6 +198,18 @@ class ConversationMemoryManager:
         cleaned = topic.strip()
         if cleaned and cleaned not in memory.quoted_topics:
             memory.quoted_topics.append(cleaned)
+
+    def remember_facts(self, memory: ConversationMemory, facts: ExtractedFacts) -> None:
+        memory.facts.merge(facts)
+        for need in facts.pain_points:
+            self.remember_need(memory, need)
+        for objection in facts.objections:
+            self.remember_objection(memory, objection[:1].upper() + objection[1:])
+        if facts.website_status:
+            self.remember_topic(memory, "website")
+        if facts.budget:
+            self.remember_topic(memory, "pricing")
+        memory.updated_at = utc_now()
 
     def update_qualification(self, memory: ConversationMemory, values: dict[str, Any]) -> None:
         memory.qualification_notes.update(values)

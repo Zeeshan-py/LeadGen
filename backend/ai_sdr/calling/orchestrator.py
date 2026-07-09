@@ -10,7 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from contextlib import suppress
 from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -34,6 +36,7 @@ from ai_sdr.calling.session_manager import (
 )
 from ai_sdr.calling.silence import SilenceDetector
 from ai_sdr.config import AISDRSettings, get_ai_sdr_settings
+from ai_sdr.conversation.memory_extractor import ExtractedFacts, SalesMemoryExtractor
 from app.database import SessionLocal
 from app.models import Lead
 
@@ -54,6 +57,7 @@ class AISDRCallingOrchestrator:
         self.settings = settings or get_ai_sdr_settings()
         self.providers = providers or build_calling_provider_stack(self.settings)
         self.registry = registry or default_call_session_registry
+        self.memory_extractor = SalesMemoryExtractor()
 
     async def start_outbound_call(
         self,
@@ -199,6 +203,8 @@ class AISDRCallingOrchestrator:
         lead = self._require_lead(db, session.contact_id)
         actor = actor.strip() or self.settings.default_actor
         segment = session.append_transcript(TranscriptSegment(role=role, text=text))
+        if segment.role == "customer":
+            self._remember_customer_facts(session, segment.text)
         AISDRCallCRMGateway(db).record_transcript_segment(lead, session, segment, actor=actor)
         if role == "customer" and not session.ai_paused:
             response = await self.providers.llm.generate_next_response(self._reasoning_context(lead, session))
@@ -241,6 +247,19 @@ class AISDRCallingOrchestrator:
         recognition: Any | None = None
         silence: SilenceDetector | None = None
         transcript_task: asyncio.Task[None] | None = None
+        active_speech_task: asyncio.Task[None] | None = None
+
+        async def schedule_speech(current_session: AISDRCallSession, *, interrupted: bool = False) -> None:
+            nonlocal active_speech_task
+            if active_speech_task is not None and not active_speech_task.done():
+                active_speech_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await active_speech_task
+            active_speech_task = asyncio.create_task(
+                self._speak_next(websocket, current_session, interrupted=interrupted)
+            )
+            active_speech_task.add_done_callback(self._log_background_task_error)
+
         try:
             async for payload in self._websocket_payloads(websocket):
                 media_event = self.providers.telephony.parse_media_event(payload)
@@ -260,9 +279,11 @@ class AISDRCallingOrchestrator:
                         self.providers.speech,
                         timeout_seconds=self.settings.call_silence_timeout_seconds,
                     )
-                    transcript_task = asyncio.create_task(self._consume_recognition(session, recognition, websocket))
+                    transcript_task = asyncio.create_task(
+                        self._consume_recognition(session, recognition, websocket, schedule_speech)
+                    )
                     await self._mark_connected(session)
-                    await self._speak_next(websocket, session, interrupted=False)
+                    await schedule_speech(session, interrupted=False)
                 elif media_event.event_type == "media":
                     if session is None or recognition is None or silence is None:
                         continue
@@ -270,6 +291,8 @@ class AISDRCallingOrchestrator:
                     if is_voice:
                         session.last_customer_audio_at = utc_now()
                         if session.ai_speaking:
+                            if active_speech_task is not None and not active_speech_task.done():
+                                active_speech_task.cancel()
                             await self._interrupt_ai(websocket, session)
                     await recognition.send_audio(media_event.audio)
                     if should_finalize:
@@ -290,8 +313,14 @@ class AISDRCallingOrchestrator:
         finally:
             if recognition is not None:
                 await recognition.close()
+            if active_speech_task is not None:
+                active_speech_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await active_speech_task
             if transcript_task is not None:
                 transcript_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await transcript_task
             if session is not None:
                 with SessionLocal() as db:
                     if session.status not in {"completed", "failed"}:
@@ -302,6 +331,7 @@ class AISDRCallingOrchestrator:
         session: AISDRCallSession,
         recognition: Any,
         websocket: WebSocket,
+        speech_scheduler: Callable[[AISDRCallSession], Awaitable[None]],
     ) -> None:
         async for segment in recognition.receive_segments():
             if not segment.text.strip():
@@ -309,6 +339,8 @@ class AISDRCallingOrchestrator:
             with SessionLocal() as db:
                 lead = self._require_lead(db, session.contact_id)
                 saved = session.append_transcript(segment)
+                if saved.role == "customer":
+                    self._remember_customer_facts(session, saved.text)
                 AISDRCallCRMGateway(db).record_transcript_segment(
                     lead,
                     session,
@@ -317,7 +349,7 @@ class AISDRCallingOrchestrator:
                 )
                 db.commit()
             if segment.role == "customer" and segment.is_final and not session.ai_paused:
-                await self._speak_next(websocket, session, interrupted=False)
+                await speech_scheduler(session)
 
     async def _speak_next(self, websocket: WebSocket, session: AISDRCallSession, *, interrupted: bool) -> None:
         with SessionLocal() as db:
@@ -349,6 +381,9 @@ class AISDRCallingOrchestrator:
                 await websocket.send_json(
                     self.providers.telephony.outbound_audio_message(stream_id=session.stream_id, audio=audio)
                 )
+        except asyncio.CancelledError:
+            session.ai_speaking = False
+            raise
         except (ProviderConfigurationError, ProviderError):
             raise
         finally:
@@ -416,9 +451,40 @@ class AISDRCallingOrchestrator:
                 "website_problems": lead.website_problems,
                 "previous_ai_sdr": (lead.raw or {}).get("ai_sdr", {}),
                 "brain": session.brain,
+                "facts": session.memory.get("facts", {}),
             },
             interrupted=interrupted,
         )
+
+    def _remember_customer_facts(self, session: AISDRCallSession, text: str) -> None:
+        facts = self.memory_extractor.extract(text)
+        existing = self._facts_from_session(session)
+        existing.merge(facts)
+        session.memory["facts"] = existing.to_dict()
+        session.updated_at = utc_now()
+
+    @staticmethod
+    def _facts_from_session(session: AISDRCallSession) -> ExtractedFacts:
+        values = session.memory.get("facts", {})
+        facts = ExtractedFacts()
+        if not isinstance(values, dict):
+            return facts
+        for key, value in values.items():
+            if hasattr(facts, key):
+                setattr(facts, key, value)
+        return facts
+
+    @staticmethod
+    def _log_background_task_error(task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        with suppress(asyncio.CancelledError):
+            exc = task.exception()
+            if exc is not None:
+                logger.error(
+                    "AI SDR background speech task failed.",
+                    exc_info=(type(exc), exc, exc.__traceback__),
+                )
 
     @staticmethod
     async def _websocket_payloads(websocket: WebSocket) -> Any:

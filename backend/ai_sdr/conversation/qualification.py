@@ -73,18 +73,18 @@ class QualificationEngine:
         business = memory.company.business_name
         if memory.company.website:
             return (
-                f"When someone lands on {business}'s website, what is the action you most want them to take: "
+                f"When people find {business} online, what should they do next: "
                 "call, book, request a quote, or something else?"
             )
         return (
-            f"For {business}, where do most new customer conversations come from right now: referrals, search, "
-            "ads, social, or repeat customers?"
+            f"For {business}, where do most new conversations come from now: referrals, search, "
+            "social, or repeat customers?"
         )
 
     def qualification_question(self, memory: ConversationMemory) -> str:
         missing = set(memory.qualification_notes.get("missing", []))
         if "urgency" in missing:
-            return "How soon would improving that process matter to you: this month, this quarter, or later?"
+            return "How soon would improving that process matter: this month, this quarter, or later?"
         if "authority" in missing:
-            return f"Are you the person who would decide whether {memory.company.business_name} tries something like this?"
-        return "If that improved, what would make it meaningful: more booked appointments, less admin time, or better lead quality?"
+            return f"Are you the person who would decide whether {memory.company.business_name} tries this?"
+        return "If that improved, what would matter most: more bookings, less admin time, or better lead quality?"
