@@ -11,9 +11,11 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
+from ai_sdr.calling.interfaces import OutboundCallRequest, ProviderConfigurationError
 from ai_sdr.calling.orchestrator import AISDRCallingOrchestrator
 from ai_sdr.calling.providers.factory import CallingProviderStack
 from ai_sdr.calling.providers.mock_provider import MockLLMProvider, MockSpeechProvider, MockTelephonyProvider
+from ai_sdr.calling.providers.twilio_provider import TwilioTelephonyProvider
 from ai_sdr.calling.session_manager import AISDRCallSessionRegistry
 from ai_sdr.config import AISDRSettings
 from ai_sdr.conversation import AISDRConversationManager, ConversationState
@@ -205,6 +207,98 @@ class AISDRTests(unittest.TestCase):
             assert profile is not None
             self.assertEqual(profile.source, "rest_api")
             self.assertEqual(profile.source_record_id, newer.id)
+
+    def test_ai_sdr_public_url_builds_absolute_twilio_callback_urls(self) -> None:
+        settings = AISDRSettings(
+            _env_file=None,
+            public_url="https://leadforage.up.railway.app/",
+            api_prefix="/ai-sdr/",
+        )
+
+        self.assertEqual(
+            settings.voice_webhook_url("call-123"),
+            "https://leadforage.up.railway.app/ai-sdr/calls/twilio/voice?call_id=call-123",
+        )
+        self.assertEqual(
+            settings.status_callback_url("call-123"),
+            "https://leadforage.up.railway.app/ai-sdr/calls/twilio/status?call_id=call-123",
+        )
+        self.assertEqual(
+            settings.media_stream_url("call-123"),
+            "wss://leadforage.up.railway.app/ai-sdr/calls/twilio/media?call_id=call-123",
+        )
+
+    def test_ai_sdr_rejects_invalid_production_public_url(self) -> None:
+        settings = AISDRSettings(
+            _env_file=None,
+            environment="production",
+            public_url="http://localhost:8000",
+            public_websocket_url="wss://leadforage.up.railway.app",
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "Invalid PUBLIC_URL"):
+            settings.validate_calling_startup()
+
+    def test_twilio_provider_logs_exact_calls_create_url(self) -> None:
+        class FakeCalls:
+            def __init__(self) -> None:
+                self.kwargs: dict[str, object] = {}
+
+            def create(self, **kwargs: object) -> object:
+                self.kwargs = kwargs
+                return type("FakeCall", (), {"sid": "CA123", "status": "queued"})()
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls = FakeCalls()
+
+        fake_client = FakeClient()
+        provider = TwilioTelephonyProvider(
+            AISDRSettings(
+                _env_file=None,
+                public_url="https://leadforage.up.railway.app",
+                twilio_account_sid="AC123",
+                twilio_auth_token="secret",
+            )
+        )
+        provider._client = fake_client
+        request = OutboundCallRequest(
+            call_id="call-123",
+            contact_id="lead-123",
+            to_number="+14155550123",
+            from_number="+13322864743",
+            voice_webhook_url="https://leadforage.up.railway.app/ai-sdr/calls/twilio/voice?call_id=call-123",
+            status_callback_url="https://leadforage.up.railway.app/ai-sdr/calls/twilio/status?call_id=call-123",
+            media_stream_url="wss://leadforage.up.railway.app/ai-sdr/calls/twilio/media?call_id=call-123",
+        )
+
+        with self.assertLogs("ai_sdr.calling.providers.twilio_provider", level="INFO") as logs:
+            result = asyncio.run(provider.start_outbound_call(request))
+
+        self.assertEqual(result.provider_call_id, "CA123")
+        self.assertEqual(fake_client.calls.kwargs["url"], request.voice_webhook_url)
+        self.assertIn(f"url={request.voice_webhook_url}", "\n".join(logs.output))
+
+    def test_twilio_provider_rejects_non_https_calls_create_url(self) -> None:
+        provider = TwilioTelephonyProvider(
+            AISDRSettings(
+                _env_file=None,
+                twilio_account_sid="AC123",
+                twilio_auth_token="secret",
+            )
+        )
+        request = OutboundCallRequest(
+            call_id="call-123",
+            contact_id="lead-123",
+            to_number="+14155550123",
+            from_number="+13322864743",
+            voice_webhook_url="http://localhost:8000/ai-sdr/calls/twilio/voice?call_id=call-123",
+            status_callback_url="https://leadforage.up.railway.app/ai-sdr/calls/twilio/status?call_id=call-123",
+            media_stream_url="wss://leadforage.up.railway.app/ai-sdr/calls/twilio/media?call_id=call-123",
+        )
+
+        with self.assertRaisesRegex(ProviderConfigurationError, "absolute HTTPS URL"):
+            asyncio.run(provider.start_outbound_call(request))
 
     def test_bulk_delete_archives_contacts_out_of_default_dashboard(self) -> None:
         with Session(self.engine) as db:

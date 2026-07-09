@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import base64
+import logging
 from typing import Any
+from urllib.parse import urlsplit
 
 from ai_sdr.calling.interfaces import (
     CallStatusUpdate,
@@ -14,6 +16,9 @@ from ai_sdr.calling.interfaces import (
     TelephonyProvider,
 )
 from ai_sdr.config import AISDRSettings
+
+
+logger = logging.getLogger(__name__)
 
 
 class TwilioTelephonyProvider(TelephonyProvider):
@@ -27,7 +32,10 @@ class TwilioTelephonyProvider(TelephonyProvider):
 
     async def start_outbound_call(self, request: OutboundCallRequest) -> OutboundCallResult:
         self._require_config()
+        self._require_https_url("url", request.voice_webhook_url)
+        self._require_https_url("status_callback", request.status_callback_url)
         client = self._twilio_client()
+        logger.info("AI SDR Twilio client.calls.create url=%s", request.voice_webhook_url)
         call = client.calls.create(
             to=request.to_number,
             from_=request.from_number,
@@ -141,4 +149,12 @@ class TwilioTelephonyProvider(TelephonyProvider):
         if not (self.settings.twilio_account_sid and self.settings.twilio_auth_token):
             raise ProviderConfigurationError(
                 "Twilio provider requires TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN."
+            )
+
+    @staticmethod
+    def _require_https_url(parameter_name: str, value: str) -> None:
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.netloc:
+            raise ProviderConfigurationError(
+                f"Twilio {parameter_name} must be an absolute HTTPS URL. Current value: {value or '<empty>'}"
             )

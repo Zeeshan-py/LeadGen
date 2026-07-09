@@ -10,7 +10,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -28,7 +28,10 @@ class Settings(BaseSettings):
         validation_alias="DATABASE_URL",
     )
     frontend_origin: str = Field(default="http://localhost:3000", validation_alias="FRONTEND_ORIGIN")
-    public_backend_url: str = Field(default="http://localhost:8000", validation_alias="PUBLIC_BACKEND_URL")
+    public_backend_url: str = Field(
+        default="http://localhost:8000",
+        validation_alias=AliasChoices("PUBLIC_URL", "PUBLIC_BACKEND_URL"),
+    )
     basic_auth_username: str = Field(default="", validation_alias="BASIC_AUTH_USERNAME")
     basic_auth_password: str = Field(default="", validation_alias="BASIC_AUTH_PASSWORD")
     database_pool_size: int = Field(default=5, validation_alias="DATABASE_POOL_SIZE")

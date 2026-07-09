@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import urlencode, urlsplit
 
 from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -29,9 +30,13 @@ class AISDRSettings(BaseSettings):
     )
     store_raw_payloads: bool = Field(default=True, validation_alias="AI_SDR_STORE_RAW_PAYLOADS")
     default_crm_stage: str = Field(default="new", validation_alias="AI_SDR_DEFAULT_CRM_STAGE")
+    environment: str = Field(default="development", validation_alias="ENVIRONMENT")
     calling_enabled: bool = Field(default=True, validation_alias="AI_SDR_CALLING_ENABLED")
     calling_mode: str = Field(default="production", validation_alias="AI_SDR_CALLING_MODE")
-    public_backend_url: str = Field(default="http://localhost:8000", validation_alias="PUBLIC_BACKEND_URL")
+    public_url: str = Field(
+        default="http://localhost:8000",
+        validation_alias=AliasChoices("PUBLIC_URL", "PUBLIC_BACKEND_URL"),
+    )
     public_websocket_url: str = Field(default="", validation_alias="AI_SDR_PUBLIC_WEBSOCKET_URL")
     telephony_provider: str = Field(default="twilio", validation_alias="AI_SDR_TELEPHONY_PROVIDER")
     llm_provider: str = Field(default="gemini", validation_alias="AI_SDR_LLM_PROVIDER")
@@ -62,7 +67,7 @@ class AISDRSettings(BaseSettings):
         validation_alias=AliasChoices("AI_SDR_GEMINI_MODEL", "GEMINI_MODEL"),
     )
     cartesia_api_key: str = Field(default="", validation_alias="CARTESIA_API_KEY")
-    cartesia_version: str = Field(default="2025-04-16", validation_alias="CARTESIA_VERSION")
+    cartesia_version: str = Field(default="2026-03-01", validation_alias="CARTESIA_VERSION")
     cartesia_tts_model: str = Field(default="sonic-3.5", validation_alias="CARTESIA_TTS_MODEL")
     cartesia_stt_model: str = Field(default="ink-whisper", validation_alias="CARTESIA_STT_MODEL")
     cartesia_voice_id: str = Field(default="", validation_alias="CARTESIA_VOICE_ID")
@@ -88,7 +93,7 @@ class AISDRSettings(BaseSettings):
     def normalize_provider_name(cls, value: str) -> str:
         return value.strip().lower().replace("_", "-")
 
-    @field_validator("public_backend_url", "public_websocket_url")
+    @field_validator("public_url", "public_websocket_url")
     @classmethod
     def trim_url(cls, value: str) -> str:
         return value.strip().rstrip("/")
@@ -96,16 +101,54 @@ class AISDRSettings(BaseSettings):
     def media_stream_url(self, call_id: str) -> str:
         base = self.public_websocket_url
         if not base:
-            base = self.public_backend_url.replace("https://", "wss://").replace("http://", "ws://")
-        return f"{base}{self.api_prefix}/calls/twilio/media?call_id={call_id}"
+            base = self.public_url.replace("https://", "wss://", 1).replace("http://", "ws://", 1)
+        return _join_url(base, self.api_prefix, "calls/twilio/media", query={"call_id": call_id})
 
     def voice_webhook_url(self, call_id: str) -> str:
-        return f"{self.public_backend_url}{self.api_prefix}/calls/twilio/voice?call_id={call_id}"
+        return _join_url(self.public_url, self.api_prefix, "calls/twilio/voice", query={"call_id": call_id})
 
     def status_callback_url(self, call_id: str) -> str:
-        return f"{self.public_backend_url}{self.api_prefix}/calls/twilio/status?call_id={call_id}"
+        return _join_url(self.public_url, self.api_prefix, "calls/twilio/status", query={"call_id": call_id})
+
+    @property
+    def public_backend_url(self) -> str:
+        return self.public_url
+
+    def validate_calling_startup(self) -> None:
+        if (
+            not self.calling_enabled
+            or self.calling_mode == "mock"
+            or self.environment.lower() != "production"
+        ):
+            return
+        if self.telephony_provider == "twilio":
+            self._require_absolute_https_public_url("PUBLIC_URL", self.public_url)
+            if self.public_websocket_url:
+                self._require_absolute_wss_public_url("AI_SDR_PUBLIC_WEBSOCKET_URL", self.public_websocket_url)
+
+    @staticmethod
+    def _require_absolute_https_public_url(name: str, value: str) -> None:
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.netloc or _is_local_hostname(parsed.hostname):
+            raise RuntimeError(
+                f"Invalid {name} for AI SDR calling: set {name} to an absolute public HTTPS URL "
+                f"such as https://your-app.up.railway.app. Current value: {value or '<empty>'}"
+            )
+
+    @staticmethod
+    def _require_absolute_wss_public_url(name: str, value: str) -> None:
+        parsed = urlsplit(value)
+        if parsed.scheme != "wss" or not parsed.netloc or _is_local_hostname(parsed.hostname):
+            raise RuntimeError(
+                f"Invalid {name} for AI SDR calling: set {name} to an absolute public WSS URL "
+                f"such as wss://your-app.up.railway.app. Current value: {value or '<empty>'}"
+            )
 
     def require_calling_credentials(self) -> None:
+        if self.telephony_provider == "twilio":
+            self._require_absolute_https_public_url("PUBLIC_URL", self.public_url)
+            if self.public_websocket_url:
+                self._require_absolute_wss_public_url("AI_SDR_PUBLIC_WEBSOCKET_URL", self.public_websocket_url)
         missing: list[str] = []
         if self.telephony_provider == "twilio":
             missing.extend(
@@ -135,3 +178,17 @@ class AISDRSettings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_ai_sdr_settings() -> AISDRSettings:
     return AISDRSettings()
+
+
+def _join_url(base: str, *parts: str, query: dict[str, str] | None = None) -> str:
+    path = "/".join(part.strip("/") for part in parts if part.strip("/"))
+    url = f"{base.rstrip('/')}/{path}"
+    if query:
+        url = f"{url}?{urlencode(query)}"
+    return url
+
+
+def _is_local_hostname(hostname: str | None) -> bool:
+    if not hostname:
+        return True
+    return hostname.lower() in {"localhost", "127.0.0.1", "0.0.0.0", "::1"}

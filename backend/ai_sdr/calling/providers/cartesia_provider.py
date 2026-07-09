@@ -77,7 +77,10 @@ class CartesiaSpeechProvider(SpeechProvider):
                 "Cartesia provider selected but cartesia[websockets] is not installed."
             ) from exc
 
-        client = Cartesia(api_key=self.settings.cartesia_api_key)
+        client = Cartesia(
+            api_key=self.settings.cartesia_api_key,
+            default_headers={"cartesia-version": self.settings.cartesia_version},
+        )
         output_format = {
             "container": "raw",
             "encoding": self.settings.cartesia_tts_encoding,
@@ -133,6 +136,7 @@ class CartesiaRecognitionSession(SpeechRecognitionSession):
                 "model": self.settings.cartesia_stt_model,
                 "encoding": self.settings.cartesia_stt_encoding,
                 "sample_rate": self.settings.cartesia_stt_sample_rate,
+                "cartesia_version": self.settings.cartesia_version,
             }
         )
         headers = {

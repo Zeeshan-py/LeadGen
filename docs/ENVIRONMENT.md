@@ -13,7 +13,7 @@ Environment variables are the deployment defaults. Some values can be overridden
 | `NEXT_PUBLIC_API_URL` | Browser-visible API URL baked into the static frontend. Leave empty for combined container. | empty | Split frontend hosting | Public value, not secret. |
 | `DATABASE_URL` | SQLAlchemy database URL. | local Postgres default | Yes | Secret if it embeds credentials. |
 | `FRONTEND_ORIGIN` | Allowed frontend CORS origin. | `http://localhost:8000` | Yes | Must match deployed frontend URL. |
-| `PUBLIC_BACKEND_URL` | Public backend URL used in links/tracking. | `http://localhost:8000` | Yes | Use HTTPS publicly. |
+| `PUBLIC_URL` | Public app/backend URL used for Twilio callbacks, links, and tracking. | `http://localhost:8000` | Yes | Use HTTPS publicly. `PUBLIC_BACKEND_URL` is still accepted for compatibility. |
 | `DATABASE_POOL_SIZE` | SQLAlchemy pool size. | `5` | No | Tune for DB limits. |
 | `DATABASE_MAX_OVERFLOW` | SQLAlchemy overflow connections. | `10` | No | Tune for DB limits. |
 | `FORWARDED_ALLOW_IPS` | Trusted proxy IPs. | `127.0.0.1` | Production | Avoid `*` unless controlled. |
@@ -79,7 +79,7 @@ GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 |---|---|---|---|---|
 | `AI_SDR_CALLING_ENABLED` | Enables the outbound calling runtime. | `true` | No | Disable to prevent calls. |
 | `AI_SDR_CALLING_MODE` | `production` or `mock`. | `production` | No | Use `mock` for local demos/tests. |
-| `AI_SDR_PUBLIC_WEBSOCKET_URL` | Public WebSocket base URL for Twilio Media Streams. | derived from `PUBLIC_BACKEND_URL` | Production voice | Must be `wss://` publicly, including Railway. |
+| `AI_SDR_PUBLIC_WEBSOCKET_URL` | Public WebSocket base URL for Twilio Media Streams. | derived from `PUBLIC_URL` | Production voice | Must be `wss://` publicly, including Railway. |
 | `AI_SDR_TELEPHONY_PROVIDER` | Telephony provider implementation. | `twilio` | No | Swappable provider role. |
 | `AI_SDR_LLM_PROVIDER` | LLM provider implementation. | `gemini` | No | Swappable provider role. |
 | `AI_SDR_SPEECH_PROVIDER` | Speech provider implementation. | `cartesia` | No | Swappable provider role. |

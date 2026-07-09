@@ -29,6 +29,7 @@ from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session, joinedload
 
 from ai_sdr.api.router import router as ai_sdr_router
+from ai_sdr.config import get_ai_sdr_settings
 from .ai import GeminiLeadAI, WebsiteAnalysis
 from .config import get_settings
 from .crm import router as crm_router
@@ -115,6 +116,7 @@ async def require_production_auth(request: Request, call_next):
 @app.on_event("startup")
 async def on_startup() -> None:
     settings.validate_production()
+    get_ai_sdr_settings().validate_calling_startup()
     try:
         with SessionLocal() as db:
             validate_google_sheets(effective_settings(settings, db))

@@ -34,7 +34,7 @@ Production container behavior:
 3. Do not set the Railway root directory to `backend` or `frontend` for the combined production app. Those Dockerfiles are for split deployments.
 4. Set `DATABASE_URL` from the Railway PostgreSQL service.
 5. Add Apify, Gemini, Gmail, Google, and AI SDR provider secrets.
-6. Set `APP_URL`, `FRONTEND_ORIGIN`, and `PUBLIC_BACKEND_URL` to the public Railway app URL.
+6. Set `APP_URL`, `FRONTEND_ORIGIN`, and `PUBLIC_URL` to the public Railway app URL.
 7. Leave `NEXT_PUBLIC_API_URL` empty for the combined container so the browser calls the same origin.
 8. Verify `/health/ready`, `/ai-sdr/health`, `/ai-sdr/`, and `/ai-sdr/call/`.
 
@@ -54,7 +54,7 @@ AI_SDR_LLM_PROVIDER=gemini
 AI_SDR_SPEECH_PROVIDER=cartesia
 AI_SDR_CALL_FROM_NUMBER=<your Twilio phone number>
 AI_SDR_PUBLIC_WEBSOCKET_URL=wss://<your-railway-domain>
-PUBLIC_BACKEND_URL=https://<your-railway-domain>
+PUBLIC_URL=https://<your-railway-domain>
 FRONTEND_ORIGIN=https://<your-railway-domain>
 NEXT_PUBLIC_API_URL=
 TWILIO_ACCOUNT_SID=<your Twilio account SID>
@@ -64,7 +64,7 @@ GEMINI_API_KEY=<your Gemini API key>
 AI_SDR_GEMINI_MODEL=gemini-2.5-flash
 CARTESIA_API_KEY=<your Cartesia API key>
 CARTESIA_VOICE_ID=<your Cartesia voice ID>
-CARTESIA_VERSION=2025-04-16
+CARTESIA_VERSION=2026-03-01
 CARTESIA_TTS_MODEL=sonic-3.5
 CARTESIA_STT_MODEL=ink-whisper
 CARTESIA_TTS_ENCODING=pcm_mulaw
