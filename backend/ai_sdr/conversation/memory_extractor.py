@@ -121,6 +121,7 @@ class SalesMemoryExtractor:
             ("inquir", "enquiry flow"),
             ("enquir", "enquiry flow"),
             ("booking", "booking friction"),
+            ("reservation", "booking friction"),
             ("appointment", "appointment friction"),
             ("referral", "depends on referrals"),
             ("instagram", "depends on Instagram"),
@@ -188,7 +189,7 @@ def classify_answer(text: str) -> str:
     lowered = text.lower()
     if any(token in lowered for token in ("yes", "sure", "okay", "ok", "go ahead")):
         return "permission"
-    if any(token in lowered for token in ("website", "instagram", "referral", "lead", "enquir", "inquir")):
+    if any(token in lowered for token in ("website", "instagram", "reservation", "referral", "lead", "enquir", "inquir")):
         return "discovery"
     if any(token in lowered for token in ("budget", "price", "cost")):
         return "budget"

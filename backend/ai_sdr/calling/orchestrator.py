@@ -218,6 +218,7 @@ class AISDRCallingOrchestrator:
                 )
                 response = self._fallback_ai_response(context, error=exc)
             session.update_brain(response)
+            self._remember_ai_question(session, response.text)
             ai_segment = session.append_transcript(TranscriptSegment(role="ai", text=response.text))
             AISDRCallCRMGateway(db).record_transcript_segment(lead, session, ai_segment, actor=actor)
         db.commit()
@@ -364,15 +365,19 @@ class AISDRCallingOrchestrator:
         with SessionLocal() as db:
             lead = self._require_lead(db, session.contact_id)
             context = self._reasoning_context(lead, session, interrupted=interrupted)
-            try:
-                response = await self.providers.llm.generate_next_response(context)
-            except Exception as exc:
-                logger.exception(
-                    "AI SDR LLM response generation failed; using fallback reply. call_id=%s",
-                    session.id,
-                )
-                response = self._fallback_ai_response(context, error=exc)
+            if not context.transcript:
+                response = self._opening_ai_response(context)
+            else:
+                try:
+                    response = await self.providers.llm.generate_next_response(context)
+                except Exception as exc:
+                    logger.exception(
+                        "AI SDR LLM response generation failed; using fallback reply. call_id=%s",
+                        session.id,
+                    )
+                    response = self._fallback_ai_response(context, error=exc)
             session.update_brain(response)
+            self._remember_ai_question(session, response.text)
             segment = session.append_transcript(TranscriptSegment(role="ai", text=response.text))
             AISDRCallCRMGateway(db).record_transcript_segment(
                 lead,
@@ -386,21 +391,95 @@ class AISDRCallingOrchestrator:
             await self.providers.telephony.end_call(session.provider_call_id)
 
     @staticmethod
+    def _opening_ai_response(context: AIReasoningContext) -> AIResponse:
+        text = f"Hi, am I speaking with someone from {context.business_name}?"
+        return AIResponse(
+            text=text,
+            current_goal="Confirm the call reached the right business.",
+            conversation_stage="Opening",
+            detected_objection="None detected",
+            customer_sentiment="Neutral",
+            qualification_score=20,
+            suggested_next_action="Confirm the business before introducing the website offer.",
+            should_end_call=False,
+            metadata={"provider": "deterministic-opening"},
+        )
+
+    @staticmethod
     def _fallback_ai_response(context: AIReasoningContext, *, error: Exception) -> AIResponse:
         customer_turns = [segment.text.lower() for segment in context.transcript if segment.role == "customer"]
         latest = customer_turns[-1] if customer_turns else ""
+        all_customer_text = " ".join(customer_turns)
+        asked_questions = set(context.memory.get("asked_questions", []))
         if any(token in latest for token in ("bye", "goodbye", "stop calling", "not interested")):
             text = "No problem. Thanks for your time, and have a good day."
             should_end = True
             stage = "Goodbye"
+        elif not latest:
+            response = AISDRCallingOrchestrator._opening_ai_response(context)
+            return AIResponse(
+                text=response.text,
+                current_goal=response.current_goal,
+                conversation_stage=response.conversation_stage,
+                detected_objection=response.detected_objection,
+                customer_sentiment=response.customer_sentiment,
+                qualification_score=response.qualification_score,
+                suggested_next_action=response.suggested_next_action,
+                should_end_call=False,
+                metadata={"provider": "fallback", "error": str(error), "reason": "opening"},
+            )
+        elif any(token in latest for token in ("again", "same question", "why are you asking")):
+            text = "You're right, apologies. I called because I saw no website listed for you on Google Maps."
+            should_end = False
+            stage = "Website Discussion"
         elif any(token in latest for token in ("who is", "who are", "other side", "hello")):
-            text = f"Hi, this is Ava with LeadForge, calling about {context.business_name}. Can I ask one quick question?"
+            if "business_confirm" in asked_questions:
+                text = (
+                    f"This is Ava with LeadForge. I saw {context.business_name} on Google Maps "
+                    "and could not find a proper website listed."
+                )
+            else:
+                text = f"Hi, this is Ava with LeadForge. Am I speaking with someone from {context.business_name}?"
             should_end = False
             stage = "Opening"
-        else:
-            text = f"Thanks. For {context.business_name}, what is the main way customers contact you now?"
+        elif _is_business_confirmation(latest) and "google_maps_no_website" not in asked_questions:
+            text = (
+                f"Thanks. I saw {context.business_name} on Google Maps and noticed no proper website was listed."
+            )
             should_end = False
-            stage = "Discovery"
+            stage = "Website Discussion"
+        elif _is_low_information(latest) and "google_maps_no_website" not in asked_questions:
+            text = f"No problem. I just wanted to confirm this is {context.business_name} before I explain quickly."
+            should_end = False
+            stage = "Opening"
+        elif "google_maps_no_website" in asked_questions and "website_benefit" not in asked_questions:
+            text = (
+                "A good restaurant website helps people see your menu, photos, location, "
+                "and reservation options without searching around."
+            )
+            should_end = False
+            stage = "Website Discussion"
+        elif "website_benefit" in asked_questions and "interest_check" not in asked_questions:
+            text = (
+                "We've built modern 3D website projects for businesses, so I wanted to ask if that would be useful for you."
+            )
+            should_end = False
+            stage = "Offer"
+        elif _is_permission(latest) and "interest_check" in asked_questions:
+            text = "Great. What is the best WhatsApp or email to send a few examples?"
+            should_end = False
+            stage = "Follow-up"
+        elif any(token in all_customer_text for token in ("reservation", "instagram", "whatsapp")):
+            text = (
+                "That makes sense. A proper website can bring your menu, photos, location, "
+                "and reservations into one professional place."
+            )
+            should_end = False
+            stage = "Website Discussion"
+        else:
+            text = "I will be brief. The reason for my call is a modern website for your restaurant."
+            should_end = False
+            stage = "Offer"
         return AIResponse(
             text=text,
             current_goal="Keep the call moving with a short fallback reply.",
@@ -495,6 +574,7 @@ class AISDRCallingOrchestrator:
                 "previous_ai_sdr": (lead.raw or {}).get("ai_sdr", {}),
                 "brain": session.brain,
                 "facts": session.memory.get("facts", {}),
+                "asked_questions": session.memory.get("asked_questions", []),
             },
             interrupted=interrupted,
         )
@@ -504,6 +584,16 @@ class AISDRCallingOrchestrator:
         existing = self._facts_from_session(session)
         existing.merge(facts)
         session.memory["facts"] = existing.to_dict()
+        session.updated_at = utc_now()
+
+    @staticmethod
+    def _remember_ai_question(session: AISDRCallSession, text: str) -> None:
+        label = _classify_ai_question(text)
+        if not label:
+            return
+        asked_questions = session.memory.setdefault("asked_questions", [])
+        if label not in asked_questions:
+            asked_questions.append(label)
         session.updated_at = utc_now()
 
     @staticmethod
@@ -562,3 +652,64 @@ class AISDRCallingOrchestrator:
 
 
 default_calling_orchestrator = AISDRCallingOrchestrator()
+
+
+def _classify_ai_question(text: str) -> str:
+    lowered = text.lower()
+    if "speaking with someone from" in lowered:
+        return "business_confirm"
+    if "google maps" in lowered and "website" in lowered:
+        return "google_maps_no_website"
+    if "helps people see your menu" in lowered or "menu, photos, location" in lowered:
+        return "website_benefit"
+    if "would be useful for you" in lowered or "would that be useful" in lowered:
+        return "interest_check"
+    if any(token in lowered for token in ("best whatsapp", "best email", "sending examples")):
+        return "contact_details"
+    return ""
+
+
+def _is_business_confirmation(text: str) -> bool:
+    return any(
+        token in text
+        for token in (
+            "yes",
+            "sure",
+            "please",
+            "go ahead",
+            "okay",
+            "ok",
+            "speaking",
+            "this is",
+            "we have attention",
+            "let's see",
+            "lets see",
+        )
+    )
+
+
+def _is_permission(text: str) -> bool:
+    return any(token in text for token in ("yes", "sure", "please", "go ahead", "okay", "ok"))
+
+
+def _is_low_information(text: str) -> bool:
+    cleaned = " ".join(text.replace(".", " ").replace(",", " ").split())
+    return cleaned in {"oh", "uh", "um", "hmm", "hello", "hello hello"}
+
+
+def _mentions_contact_source(text: str) -> bool:
+    return any(
+        token in text
+        for token in (
+            "instagram",
+            "reservation",
+            "reservations",
+            "booking",
+            "whatsapp",
+            "phone",
+            "call",
+            "dm",
+            "walk in",
+            "walk-in",
+        )
+    )

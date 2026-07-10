@@ -11,7 +11,13 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import Session
 
-from ai_sdr.calling.interfaces import AIReasoningContext, CallOutcome, OutboundCallRequest, ProviderConfigurationError
+from ai_sdr.calling.interfaces import (
+    AIReasoningContext,
+    CallOutcome,
+    OutboundCallRequest,
+    ProviderConfigurationError,
+    TranscriptSegment,
+)
 from ai_sdr.calling.orchestrator import AISDRCallingOrchestrator
 from ai_sdr.calling.providers.cartesia_provider import CartesiaSpeechProvider
 from ai_sdr.calling.providers.factory import CallingProviderStack
@@ -706,6 +712,115 @@ class AISDRTests(unittest.TestCase):
             self.assertTrue(ai_lines)
             self.assertIn("LeadForge", ai_lines[-1]["text"])
             self.assertEqual(session["brain"]["provider"], "fallback")
+
+    def test_calling_orchestrator_fallback_uses_website_offer_flow(self) -> None:
+        class FailingLLMProvider:
+            name = "failing"
+
+            async def generate_next_response(self, context: AIReasoningContext):  # type: ignore[no-untyped-def]
+                raise RuntimeError("llm unavailable")
+
+            async def summarize_call(self, context: AIReasoningContext) -> CallOutcome:
+                return CallOutcome(
+                    conversation_summary="Fallback summary.",
+                    qualification_score=0,
+                    interested=False,
+                    reason="Test summary.",
+                )
+
+        with Session(self.engine) as db:
+            lead = Lead(
+                dedupe_key="domain:fallback-repeat.example",
+                business_name="TBD Fort",
+                contact_name="Zeeshan",
+                phone="+923494362762",
+                city="Gujrat",
+                business_type="Restaurant",
+                source="ai_sdr",
+            )
+            db.add(lead)
+            db.commit()
+
+            orchestrator = AISDRCallingOrchestrator(
+                settings=AISDRSettings(_env_file=None, calling_mode="mock", twilio_validate_signature=False),
+                providers=CallingProviderStack(
+                    telephony=MockTelephonyProvider(),
+                    llm=FailingLLMProvider(),
+                    speech=MockSpeechProvider(),
+                ),
+                registry=AISDRCallSessionRegistry(),
+            )
+
+            async def run_turns() -> list[str]:
+                started = await orchestrator.start_outbound_call(db, contact_id=lead.id, actor="QA")
+                replies: list[str] = []
+                for text in (
+                    "Hello, who is on the other side?",
+                    "Let's see.",
+                    "Via reservation.",
+                    "We have attention.",
+                    "Yes, please.",
+                ):
+                    updated = await orchestrator.inject_transcript(
+                        db,
+                        call_id=started.id,
+                        role="customer",
+                        text=text,
+                        actor="QA",
+                    )
+                    ai_lines = [line.text for line in updated.transcript if line.role == "ai"]
+                    replies.append(ai_lines[-1])
+                return replies
+
+            replies = asyncio.run(run_turns())
+
+            self.assertIn("LeadForge", replies[0])
+            self.assertIn("speaking with someone from TBD Fort", replies[0])
+            self.assertIn("Google Maps", replies[1])
+            self.assertIn("no proper website", replies[1])
+            self.assertIn("menu, photos, location", replies[2])
+            self.assertIn("modern 3D website", replies[3])
+            self.assertIn("best WhatsApp or email", replies[4])
+            self.assertNotIn("main way customers contact", " ".join(replies))
+
+    def test_calling_orchestrator_fallback_apologizes_without_repeating_question(self) -> None:
+        context = AIReasoningContext(
+            call_id="call-123",
+            contact_id="lead-123",
+            business_name="TBD Fort",
+            owner_name="Zeeshan",
+            industry="Restaurant",
+            city="Gujrat",
+            website="",
+            objective="Offer a modern 3D website.",
+            transcript=[TranscriptSegment(role="customer", text="Why are you asking again and again the same question?")],
+            memory={"asked_questions": ["business_confirm", "google_maps_no_website"]},
+        )
+
+        response = AISDRCallingOrchestrator._fallback_ai_response(context, error=RuntimeError("llm unavailable"))
+
+        self.assertIn("apologies", response.text.lower())
+        self.assertIn("Google Maps", response.text)
+        self.assertNotIn("main way customers contact", response.text)
+
+    def test_calling_orchestrator_fallback_opens_before_discovery(self) -> None:
+        context = AIReasoningContext(
+            call_id="call-123",
+            contact_id="lead-123",
+            business_name="TBD Fort",
+            owner_name="Zeeshan",
+            industry="Restaurant",
+            city="Gujrat",
+            website="",
+            objective="Offer a modern 3D website.",
+            transcript=[],
+            memory={},
+        )
+
+        response = AISDRCallingOrchestrator._fallback_ai_response(context, error=RuntimeError("llm unavailable"))
+
+        self.assertIn("speaking with someone from TBD Fort", response.text)
+        self.assertNotIn("main way customers contact", response.text)
 
     def test_cartesia_synthesis_stream_wrapper_yields_chunks(self) -> None:
         class FakeCartesiaSpeechProvider(CartesiaSpeechProvider):
