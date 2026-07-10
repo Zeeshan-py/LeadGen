@@ -411,7 +411,7 @@ class AISDRCallingOrchestrator:
         latest = customer_turns[-1] if customer_turns else ""
         all_customer_text = " ".join(customer_turns)
         asked_questions = set(context.memory.get("asked_questions", []))
-        if any(token in latest for token in ("bye", "goodbye", "stop calling", "not interested")):
+        if any(token in latest for token in ("bye", "goodbye", "stop calling")):
             text = "No problem. Thanks for your time, and have a good day."
             should_end = True
             stage = "Goodbye"
@@ -432,6 +432,18 @@ class AISDRCallingOrchestrator:
             text = "You're right, apologies. I called because I saw no website listed for you on Google Maps."
             should_end = False
             stage = "Website Discussion"
+        elif _is_negative(latest):
+            if "soft_no_reminder" in asked_questions:
+                text = "Totally understood. Thanks for your time, and have a good day."
+                should_end = True
+                stage = "Goodbye"
+            else:
+                text = (
+                    "No problem. A website can still help customers trust you faster, "
+                    "see your menu, and reserve easily. Should I send one example?"
+                )
+                should_end = False
+                stage = "Objection Handling"
         elif any(token in latest for token in ("who is", "who are", "other side", "hello")):
             if "business_confirm" in asked_questions:
                 text = (
@@ -452,30 +464,31 @@ class AISDRCallingOrchestrator:
             text = f"No problem. I just wanted to confirm this is {context.business_name} before I explain quickly."
             should_end = False
             stage = "Opening"
-        elif "google_maps_no_website" in asked_questions and "website_benefit" not in asked_questions:
+        elif "google_maps_no_website" in asked_questions and "interest_check" not in asked_questions:
             text = (
-                "A good restaurant website helps people see your menu, photos, location, "
-                "and reservation options without searching around."
-            )
-            should_end = False
-            stage = "Website Discussion"
-        elif "website_benefit" in asked_questions and "interest_check" not in asked_questions:
-            text = (
-                "We've built modern 3D website projects for businesses, so I wanted to ask if that would be useful for you."
+                "A website can show your menu, photos, location, and reservations in one place. "
+                "I'm a graduate engineer and web developer, I've completed many projects, and I can make an attractive website for you. Are you interested?"
             )
             should_end = False
             stage = "Offer"
+        elif "contact_details" in asked_questions and (_mentions_contact_detail(latest) or _is_permission(latest)):
+            text = "Perfect. We'll contact you for requirements and start with the first version. Thanks for your time."
+            should_end = True
+            stage = "Goodbye"
         elif _is_permission(latest) and "interest_check" in asked_questions:
-            text = "Great. What is the best WhatsApp or email to send a few examples?"
+            text = (
+                "Great. What number should we contact? We'll ask your requirements, "
+                "make the first version first, and then discuss the amount further."
+            )
             should_end = False
             stage = "Follow-up"
         elif any(token in all_customer_text for token in ("reservation", "instagram", "whatsapp")):
             text = (
-                "That makes sense. A proper website can bring your menu, photos, location, "
-                "and reservations into one professional place."
+                "That makes sense. A website can bring your menu, photos, location, "
+                "and reservations into one professional place. Are you interested?"
             )
             should_end = False
-            stage = "Website Discussion"
+            stage = "Offer"
         else:
             text = "I will be brief. The reason for my call is a modern website for your restaurant."
             should_end = False
@@ -660,12 +673,14 @@ def _classify_ai_question(text: str) -> str:
         return "business_confirm"
     if "google maps" in lowered and "website" in lowered:
         return "google_maps_no_website"
-    if "helps people see your menu" in lowered or "menu, photos, location" in lowered:
+    if "helps people see your menu" in lowered:
         return "website_benefit"
-    if "would be useful for you" in lowered or "would that be useful" in lowered:
+    if "are you interested" in lowered or "would be useful for you" in lowered or "would that be useful" in lowered:
         return "interest_check"
-    if any(token in lowered for token in ("best whatsapp", "best email", "sending examples")):
+    if any(token in lowered for token in ("what number should we contact", "best whatsapp", "best email", "sending examples")):
         return "contact_details"
+    if "should i send one example" in lowered:
+        return "soft_no_reminder"
     return ""
 
 
@@ -689,7 +704,27 @@ def _is_business_confirmation(text: str) -> bool:
 
 
 def _is_permission(text: str) -> bool:
-    return any(token in text for token in ("yes", "sure", "please", "go ahead", "okay", "ok"))
+    return any(
+        token in text
+        for token in (
+            "yes",
+            "sure",
+            "please",
+            "go ahead",
+            "okay",
+            "ok",
+            "interested",
+            "we have attention",
+        )
+    )
+
+
+def _is_negative(text: str) -> bool:
+    cleaned = " ".join(text.replace(".", " ").replace(",", " ").replace("!", " ").split())
+    return cleaned in {"no", "no thanks", "not now"} or any(
+        token in cleaned
+        for token in ("not interested", "don't need", "do not need", "no need", "already have")
+    )
 
 
 def _is_low_information(text: str) -> bool:
@@ -713,3 +748,7 @@ def _mentions_contact_source(text: str) -> bool:
             "walk-in",
         )
     )
+
+
+def _mentions_contact_detail(text: str) -> bool:
+    return any(char.isdigit() for char in text) or "@" in text or "whatsapp" in text or "email" in text

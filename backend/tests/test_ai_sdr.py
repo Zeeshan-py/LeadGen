@@ -758,8 +758,8 @@ class AISDRTests(unittest.TestCase):
                     "Hello, who is on the other side?",
                     "Let's see.",
                     "Via reservation.",
-                    "We have attention.",
                     "Yes, please.",
+                    "+923494362762",
                 ):
                     updated = await orchestrator.inject_transcript(
                         db,
@@ -779,9 +779,58 @@ class AISDRTests(unittest.TestCase):
             self.assertIn("Google Maps", replies[1])
             self.assertIn("no proper website", replies[1])
             self.assertIn("menu, photos, location", replies[2])
-            self.assertIn("modern 3D website", replies[3])
-            self.assertIn("best WhatsApp or email", replies[4])
+            self.assertIn("graduate engineer and web developer", replies[2])
+            self.assertIn("completed many projects", replies[2])
+            self.assertIn("attractive website", replies[2])
+            self.assertIn("What number should we contact", replies[3])
+            self.assertIn("first version", replies[3])
+            self.assertIn("discuss the amount", replies[3])
+            self.assertIn("contact you for requirements", replies[4])
             self.assertNotIn("main way customers contact", " ".join(replies))
+
+    def test_calling_orchestrator_fallback_handles_two_no_responses(self) -> None:
+        context = AIReasoningContext(
+            call_id="call-123",
+            contact_id="lead-123",
+            business_name="TBD Fort",
+            owner_name="Zeeshan",
+            industry="Restaurant",
+            city="Gujrat",
+            website="",
+            objective="Offer a modern 3D website.",
+            transcript=[TranscriptSegment(role="customer", text="No, not interested.")],
+            memory={"asked_questions": ["business_confirm", "google_maps_no_website", "interest_check"]},
+        )
+
+        reminder = AISDRCallingOrchestrator._fallback_ai_response(context, error=RuntimeError("llm unavailable"))
+
+        self.assertFalse(reminder.should_end_call)
+        self.assertIn("still help customers trust you", reminder.text)
+
+        second_no = AIReasoningContext(
+            call_id="call-123",
+            contact_id="lead-123",
+            business_name="TBD Fort",
+            owner_name="Zeeshan",
+            industry="Restaurant",
+            city="Gujrat",
+            website="",
+            objective="Offer a modern 3D website.",
+            transcript=[TranscriptSegment(role="customer", text="No.")],
+            memory={
+                "asked_questions": [
+                    "business_confirm",
+                    "google_maps_no_website",
+                    "interest_check",
+                    "soft_no_reminder",
+                ]
+            },
+        )
+
+        goodbye = AISDRCallingOrchestrator._fallback_ai_response(second_no, error=RuntimeError("llm unavailable"))
+
+        self.assertTrue(goodbye.should_end_call)
+        self.assertIn("Thanks for your time", goodbye.text)
 
     def test_calling_orchestrator_fallback_apologizes_without_repeating_question(self) -> None:
         context = AIReasoningContext(
