@@ -885,6 +885,77 @@ class AISDRTests(unittest.TestCase):
             self.assertTrue(session.brain["should_end_call"])
             self.assertNotIn("Google Maps", replies[7])
 
+    def test_calling_orchestrator_fallback_answers_website_type_without_restarting(self) -> None:
+        class FailingLLMProvider:
+            name = "failing"
+
+            async def generate_next_response(self, context: AIReasoningContext):  # type: ignore[no-untyped-def]
+                raise RuntimeError("llm unavailable")
+
+            async def summarize_call(self, context: AIReasoningContext) -> CallOutcome:
+                return CallOutcome(
+                    conversation_summary="Fallback summary.",
+                    qualification_score=0,
+                    interested=True,
+                    reason="Test summary.",
+                )
+
+        with Session(self.engine) as db:
+            lead = Lead(
+                dedupe_key="domain:website-type-question.example",
+                business_name="TBD Fort",
+                contact_name="Zeeshan",
+                phone="+923494362762",
+                city="Gujrat",
+                business_type="Restaurant",
+                source="ai_sdr",
+            )
+            db.add(lead)
+            db.commit()
+
+            orchestrator = AISDRCallingOrchestrator(
+                settings=AISDRSettings(_env_file=None, calling_mode="mock", twilio_validate_signature=False),
+                providers=CallingProviderStack(
+                    telephony=MockTelephonyProvider(),
+                    llm=FailingLLMProvider(),
+                    speech=MockSpeechProvider(),
+                ),
+                registry=AISDRCallSessionRegistry(),
+            )
+
+            async def run_turns() -> list[str]:
+                started = await orchestrator.start_outbound_call(db, contact_id=lead.id, actor="QA")
+                replies: list[str] = []
+                for text in (
+                    "Yes.",
+                    "Yes, I have no website.",
+                    "What type of website can you make?",
+                    "Okay, but what kind of website can you make?",
+                    "Hello.",
+                ):
+                    updated = await orchestrator.inject_transcript(
+                        db,
+                        call_id=started.id,
+                        role="customer",
+                        text=text,
+                        actor="QA",
+                    )
+                    ai_lines = [line.text for line in updated.transcript if line.role == "ai"]
+                    replies.append(ai_lines[-1])
+                return replies
+
+            replies = asyncio.run(run_turns())
+
+            self.assertIn("Google Maps", replies[0])
+            self.assertIn("menu, photos, location", replies[1])
+            self.assertIn("restaurant website", replies[2])
+            self.assertIn("booking or reservation", replies[2])
+            self.assertIn("restaurant website", replies[3])
+            self.assertIn("Yes, I'm here", replies[4])
+            self.assertIn("share your best number", replies[4])
+            self.assertNotIn("Google Maps", " ".join(replies[2:]))
+            self.assertNotIn("reason for my call", " ".join(replies[2:]).lower())
+
     def test_calling_orchestrator_fallback_is_industry_aware_and_hands_off_pricing(self) -> None:
         class FailingLLMProvider:
             name = "failing"

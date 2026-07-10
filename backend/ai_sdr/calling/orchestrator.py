@@ -416,6 +416,7 @@ class AISDRCallingOrchestrator:
         latest = customer_turns[-1] if customer_turns else ""
         all_customer_text = " ".join(customer_turns)
         asked_questions = set(context.memory.get("asked_questions", []))
+        awaiting_contact = "contact_details" in asked_questions or "website_type_answer" in asked_questions
         if any(token in latest for token in ("bye", "goodbye", "stop calling")):
             text = "No problem. Thanks for your time, and have a good day."
             should_end = True
@@ -437,6 +438,13 @@ class AISDRCallingOrchestrator:
             text = "You're right, apologies. I called because I saw no website listed for you on Google Maps."
             should_end = False
             stage = "Website Discussion"
+        elif _asks_website_capability(latest):
+            if "website_type_answer" in asked_questions:
+                text = _website_type_repeat_text(context)
+            else:
+                text = _website_type_answer_text(context)
+            should_end = False
+            stage = "Website Discussion"
         elif _mentions_pricing(latest):
             text = (
                 "I do not want to give a random price on the call. "
@@ -455,7 +463,7 @@ class AISDRCallingOrchestrator:
             text = _future_contact_goodbye_text()
             should_end = True
             stage = "Goodbye"
-        elif any(token in latest for token in ("who is", "who are", "other side", "hello")):
+        elif _is_identity_question(latest):
             if "business_confirm" in asked_questions:
                 text = (
                     f"This is Ava with LeadForge. I saw {context.business_name} on Google Maps "
@@ -479,11 +487,11 @@ class AISDRCallingOrchestrator:
             text = _interest_pitch_text(context)
             should_end = False
             stage = "Offer"
-        elif "contact_details" in asked_questions and _mentions_contact_detail(latest):
+        elif awaiting_contact and _mentions_contact_detail(latest):
             text = "Perfect. We'll contact you for requirements and start with the first version. Thanks for your time."
             should_end = True
             stage = "Goodbye"
-        elif "contact_details" in asked_questions and _mentions_partial_contact_detail(latest):
+        elif awaiting_contact and _mentions_partial_contact_detail(latest):
             text = "I only caught part of that. Please say the full phone number, including the starting digits."
             should_end = False
             stage = "Follow-up"
@@ -501,12 +509,23 @@ class AISDRCallingOrchestrator:
             )
             should_end = False
             stage = "Follow-up"
+        elif _is_low_information(latest) and "website_type_answer" in asked_questions:
+            text = (
+                "Yes, I'm here. If that type of website sounds useful, share your best number "
+                "and we'll discuss your requirements."
+            )
+            should_end = False
+            stage = "Follow-up"
+        elif _is_low_information(latest) and "interest_check" in asked_questions:
+            text = "Yes, I'm here. If you're interested, share your best number and we'll discuss requirements."
+            should_end = False
+            stage = "Follow-up"
         elif any(token in all_customer_text for token in ("reservation", "instagram", "whatsapp")):
             text = _interest_pitch_text(context)
             should_end = False
             stage = "Offer"
         else:
-            text = _reason_for_call_text(context)
+            text = _contextual_fallback_text(context, asked_questions)
             should_end = False
             stage = "Offer"
         return AIResponse(
@@ -696,6 +715,16 @@ def _classify_ai_question(text: str) -> str:
     if any(
         token in lowered
         for token in (
+            "menu, photos, location",
+            "portfolio, project gallery",
+            "services, work, location",
+            "mobile-friendly",
+        )
+    ):
+        return "website_type_answer"
+    if any(
+        token in lowered
+        for token in (
             "what number should we contact",
             "please share your best number",
             "share your best number",
@@ -746,6 +775,33 @@ def _is_permission(text: str) -> bool:
 
 def _mentions_pricing(text: str) -> bool:
     return any(token in text for token in ("cost", "price", "pricing", "amount", "charge", "charges", "budget"))
+
+
+def _asks_website_capability(text: str) -> bool:
+    if "website" not in text and "site" not in text:
+        return False
+    return any(
+        token in text
+        for token in (
+            "what type",
+            "which type",
+            "what kind",
+            "which kind",
+            "what sort",
+            "can you make",
+            "can you build",
+            "what can you make",
+            "what can you build",
+            "what features",
+            "features",
+            "included",
+            "include",
+        )
+    )
+
+
+def _is_identity_question(text: str) -> bool:
+    return any(token in text for token in ("who is", "who are", "other side"))
 
 
 def _mentions_wrong_industry(text: str, context: AIReasoningContext) -> bool:
@@ -814,6 +870,51 @@ def _future_contact_goodbye_text() -> str:
 
 def _reason_for_call_text(context: AIReasoningContext) -> str:
     return f"I will be brief. The reason for my call is a modern website for {context.business_name}."
+
+
+def _contextual_fallback_text(context: AIReasoningContext, asked_questions: set[str]) -> str:
+    if "website_type_answer" in asked_questions:
+        return "That is the main idea. If it sounds useful, share your best number and we'll discuss requirements."
+    if "interest_check" in asked_questions:
+        return "Sure. Are you interested in us making that website for you?"
+    if "google_maps_no_website" in asked_questions:
+        return _interest_pitch_text(context)
+    return _reason_for_call_text(context)
+
+
+def _website_type_answer_text(context: AIReasoningContext) -> str:
+    if _industry_kind(context) == "restaurant":
+        return (
+            f"For {context.business_name}, I can make a modern restaurant website with menu, photos, "
+            "location map, WhatsApp/contact, and booking or reservation enquiry. "
+            "If useful, share your best number."
+        )
+    if _industry_kind(context) == "architecture":
+        return (
+            f"For {context.business_name}, I can make a portfolio website with project gallery, services, "
+            "about section, location, WhatsApp/contact, and enquiry form. If useful, share your best number."
+        )
+    return (
+        f"For {context.business_name}, I can make a modern mobile-friendly website with services, work, "
+        "map location, WhatsApp/contact, and enquiry form. If useful, share your best number."
+    )
+
+
+def _website_type_repeat_text(context: AIReasoningContext) -> str:
+    if _industry_kind(context) == "restaurant":
+        return (
+            "It would be a restaurant website: menu, photos, location, WhatsApp/contact, "
+            "and booking enquiry. Share your best number and we'll discuss requirements."
+        )
+    if _industry_kind(context) == "architecture":
+        return (
+            "It would be an architecture portfolio website: projects, services, profile, "
+            "contact details, and enquiry form. Share your best number and we'll discuss requirements."
+        )
+    return (
+        "It would be a business website with your services, work, location, contact options, "
+        "and enquiry form. Share your best number and we'll discuss requirements."
+    )
 
 
 def _website_benefit_text(context: AIReasoningContext) -> str:
