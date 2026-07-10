@@ -207,7 +207,7 @@ class AISDRCallingOrchestrator:
         if segment.role == "customer":
             self._remember_customer_facts(session, segment.text)
         AISDRCallCRMGateway(db).record_transcript_segment(lead, session, segment, actor=actor)
-        if role == "customer" and not session.ai_paused:
+        if role == "customer" and not session.ai_paused and not session.brain.get("should_end_call"):
             context = self._reasoning_context(lead, session)
             try:
                 response = await self.providers.llm.generate_next_response(context)
@@ -358,7 +358,12 @@ class AISDRCallingOrchestrator:
                     actor=self.settings.default_actor,
                 )
                 db.commit()
-            if segment.role == "customer" and segment.is_final and not session.ai_paused:
+            if (
+                segment.role == "customer"
+                and segment.is_final
+                and not session.ai_paused
+                and not session.brain.get("should_end_call")
+            ):
                 await speech_scheduler(session)
 
     async def _speak_next(self, websocket: WebSocket, session: AISDRCallSession, *, interrupted: bool) -> None:
@@ -474,13 +479,17 @@ class AISDRCallingOrchestrator:
             text = _interest_pitch_text(context)
             should_end = False
             stage = "Offer"
-        elif "contact_details" in asked_questions and (_mentions_contact_detail(latest) or _is_permission(latest)):
+        elif "contact_details" in asked_questions and _mentions_contact_detail(latest):
             text = "Perfect. We'll contact you for requirements and start with the first version. Thanks for your time."
             should_end = True
             stage = "Goodbye"
+        elif "contact_details" in asked_questions and _mentions_partial_contact_detail(latest):
+            text = "I only caught part of that. Please say the full phone number, including the starting digits."
+            should_end = False
+            stage = "Follow-up"
         elif "contact_details" in asked_questions:
             text = (
-                "No problem. Please share the best phone number, and my owner will contact you "
+                "No problem. Please share the full best phone number, and my owner will contact you "
                 "to understand requirements and discuss the next step."
             )
             should_end = False
@@ -684,7 +693,18 @@ def _classify_ai_question(text: str) -> str:
         return "interest_check"
     if "helps people see your menu" in lowered or "show your portfolio" in lowered or "show your services" in lowered:
         return "website_benefit"
-    if any(token in lowered for token in ("what number should we contact", "best whatsapp", "best email", "sending examples")):
+    if any(
+        token in lowered
+        for token in (
+            "what number should we contact",
+            "please share your best number",
+            "share your best number",
+            "best phone number",
+            "best whatsapp",
+            "best email",
+            "sending examples",
+        )
+    ):
         return "contact_details"
     return ""
 
@@ -764,7 +784,17 @@ def _mentions_contact_source(text: str) -> bool:
 
 
 def _mentions_contact_detail(text: str) -> bool:
-    return any(char.isdigit() for char in text) or "@" in text or "whatsapp" in text or "email" in text
+    return _digit_count(text) >= 7 or "@" in text
+
+
+def _mentions_partial_contact_detail(text: str) -> bool:
+    return 1 <= _digit_count(text) < 7 or any(
+        token in text for token in ("my number", "number is", "phone is", "contact is")
+    )
+
+
+def _digit_count(text: str) -> int:
+    return sum(char.isdigit() for char in text)
 
 
 def _interest_pitch_text(context: AIReasoningContext) -> str:

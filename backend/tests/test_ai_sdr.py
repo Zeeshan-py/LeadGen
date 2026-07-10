@@ -811,6 +811,80 @@ class AISDRTests(unittest.TestCase):
         self.assertNotIn("Should I send", goodbye.text)
         self.assertNotIn("still help customers", goodbye.text)
 
+    def test_calling_orchestrator_fallback_requires_complete_contact_number(self) -> None:
+        class FailingLLMProvider:
+            name = "failing"
+
+            async def generate_next_response(self, context: AIReasoningContext):  # type: ignore[no-untyped-def]
+                raise RuntimeError("llm unavailable")
+
+            async def summarize_call(self, context: AIReasoningContext) -> CallOutcome:
+                return CallOutcome(
+                    conversation_summary="Fallback summary.",
+                    qualification_score=0,
+                    interested=True,
+                    reason="Test summary.",
+                )
+
+        with Session(self.engine) as db:
+            lead = Lead(
+                dedupe_key="domain:partial-phone.example",
+                business_name="TBD Fort",
+                contact_name="Zeeshan",
+                phone="+923494362762",
+                city="Gujrat",
+                business_type="Restaurant",
+                source="ai_sdr",
+            )
+            db.add(lead)
+            db.commit()
+
+            orchestrator = AISDRCallingOrchestrator(
+                settings=AISDRSettings(_env_file=None, calling_mode="mock", twilio_validate_signature=False),
+                providers=CallingProviderStack(
+                    telephony=MockTelephonyProvider(),
+                    llm=FailingLLMProvider(),
+                    speech=MockSpeechProvider(),
+                ),
+                registry=AISDRCallSessionRegistry(),
+            )
+
+            async def run_turns() -> tuple[list[str], AISDRCallSession]:
+                started = await orchestrator.start_outbound_call(db, contact_id=lead.id, actor="QA")
+                replies: list[str] = []
+                session = started
+                for text in (
+                    "Yes.",
+                    "Okay.",
+                    "What is the price?",
+                    "Oh.",
+                    "My number is a",
+                    "0349",
+                    "03494362762",
+                    "Hello.",
+                ):
+                    session = await orchestrator.inject_transcript(
+                        db,
+                        call_id=started.id,
+                        role="customer",
+                        text=text,
+                        actor="QA",
+                    )
+                    ai_lines = [line.text for line in session.transcript if line.role == "ai"]
+                    replies.append(ai_lines[-1])
+                return replies, session
+
+            replies, session = asyncio.run(run_turns())
+
+            self.assertIn("random price", replies[2])
+            self.assertIn("full best phone number", replies[3])
+            self.assertIn("full phone number", replies[4])
+            self.assertIn("full phone number", replies[5])
+            self.assertIn("contact you for requirements", replies[6])
+            self.assertEqual(replies[6], replies[7])
+            self.assertTrue(session.brain["should_end_call"])
+            self.assertNotIn("Google Maps", replies[7])
+
     def test_calling_orchestrator_fallback_is_industry_aware_and_hands_off_pricing(self) -> None:
         class FailingLLMProvider:
             name = "failing"
@@ -878,7 +952,7 @@ class AISDRTests(unittest.TestCase):
             self.assertIn("portfolio", replies[1])
             self.assertIn("projects", replies[1])
             self.assertIn("What number should we contact", replies[2])
-            self.assertIn("Please share the best phone number", replies[3])
+            self.assertIn("Please share the full best phone number", replies[3])
             self.assertIn("random price", replies[4])
             self.assertIn("my owner will talk to you", replies[4])
             self.assertIn("not a restaurant website", replies[5])
