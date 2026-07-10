@@ -788,7 +788,7 @@ class AISDRTests(unittest.TestCase):
             self.assertIn("contact you for requirements", replies[4])
             self.assertNotIn("main way customers contact", " ".join(replies))
 
-    def test_calling_orchestrator_fallback_handles_two_no_responses(self) -> None:
+    def test_calling_orchestrator_fallback_ends_when_website_not_needed(self) -> None:
         context = AIReasoningContext(
             call_id="call-123",
             contact_id="lead-123",
@@ -798,39 +798,18 @@ class AISDRTests(unittest.TestCase):
             city="Gujrat",
             website="",
             objective="Offer a modern 3D website.",
-            transcript=[TranscriptSegment(role="customer", text="No, not interested.")],
+            transcript=[TranscriptSegment(role="customer", text="I don't need a website.")],
             memory={"asked_questions": ["business_confirm", "google_maps_no_website", "interest_check"]},
         )
 
-        reminder = AISDRCallingOrchestrator._fallback_ai_response(context, error=RuntimeError("llm unavailable"))
-
-        self.assertFalse(reminder.should_end_call)
-        self.assertIn("still help customers trust you", reminder.text)
-
-        second_no = AIReasoningContext(
-            call_id="call-123",
-            contact_id="lead-123",
-            business_name="TBD Fort",
-            owner_name="Zeeshan",
-            industry="Restaurant",
-            city="Gujrat",
-            website="",
-            objective="Offer a modern 3D website.",
-            transcript=[TranscriptSegment(role="customer", text="No.")],
-            memory={
-                "asked_questions": [
-                    "business_confirm",
-                    "google_maps_no_website",
-                    "interest_check",
-                    "soft_no_reminder",
-                ]
-            },
-        )
-
-        goodbye = AISDRCallingOrchestrator._fallback_ai_response(second_no, error=RuntimeError("llm unavailable"))
+        goodbye = AISDRCallingOrchestrator._fallback_ai_response(context, error=RuntimeError("llm unavailable"))
 
         self.assertTrue(goodbye.should_end_call)
         self.assertIn("Thanks for your time", goodbye.text)
+        self.assertIn("website developer", goodbye.text)
+        self.assertIn("tech help", goodbye.text)
+        self.assertNotIn("Should I send", goodbye.text)
+        self.assertNotIn("still help customers", goodbye.text)
 
     def test_calling_orchestrator_fallback_is_industry_aware_and_hands_off_pricing(self) -> None:
         class FailingLLMProvider:
@@ -881,7 +860,6 @@ class AISDRTests(unittest.TestCase):
                     "What would the cost be?",
                     "I don't have a restaurant.",
                     "I don't need a website.",
-                    "How are you going to send the example?",
                 ):
                     updated = await orchestrator.inject_transcript(
                         db,
@@ -904,8 +882,9 @@ class AISDRTests(unittest.TestCase):
             self.assertIn("random price", replies[4])
             self.assertIn("my owner will talk to you", replies[4])
             self.assertIn("not a restaurant website", replies[5])
-            self.assertIn("clients trust your work", replies[6])
-            self.assertIn("WhatsApp or email", replies[7])
+            self.assertIn("website developer", replies[6])
+            self.assertIn("tech help", replies[6])
+            self.assertIn("Thanks for your time", replies[6])
             self.assertNotIn("your restaurant", joined)
             self.assertNotIn("your menu", joined)
             self.assertNotIn("reservations into one", joined)

@@ -447,14 +447,9 @@ class AISDRCallingOrchestrator:
             should_end = False
             stage = "Website Discussion"
         elif _is_negative(latest):
-            if "soft_no_reminder" in asked_questions:
-                text = "Totally understood. Thanks for your time, and have a good day."
-                should_end = True
-                stage = "Goodbye"
-            else:
-                text = _soft_no_reminder_text(context)
-                should_end = False
-                stage = "Objection Handling"
+            text = _future_contact_goodbye_text()
+            should_end = True
+            stage = "Goodbye"
         elif any(token in latest for token in ("who is", "who are", "other side", "hello")):
             if "business_confirm" in asked_questions:
                 text = (
@@ -479,13 +474,6 @@ class AISDRCallingOrchestrator:
             text = _interest_pitch_text(context)
             should_end = False
             stage = "Offer"
-        elif any(token in latest for token in ("how", "send", "example")) and "soft_no_reminder" in asked_questions:
-            text = (
-                "I can send examples on WhatsApp or email. Share the best number, "
-                "and my owner will follow up with you."
-            )
-            should_end = False
-            stage = "Follow-up"
         elif "contact_details" in asked_questions and (_mentions_contact_detail(latest) or _is_permission(latest)):
             text = "Perfect. We'll contact you for requirements and start with the first version. Thanks for your time."
             should_end = True
@@ -698,8 +686,6 @@ def _classify_ai_question(text: str) -> str:
         return "website_benefit"
     if any(token in lowered for token in ("what number should we contact", "best whatsapp", "best email", "sending examples")):
         return "contact_details"
-    if "should i send one example" in lowered or "should i still send" in lowered:
-        return "soft_no_reminder"
     return ""
 
 
@@ -789,20 +775,10 @@ def _interest_pitch_text(context: AIReasoningContext) -> str:
     )
 
 
-def _soft_no_reminder_text(context: AIReasoningContext) -> str:
-    if _industry_kind(context) == "restaurant":
-        return (
-            "No problem. A website can still help customers trust you faster, "
-            "see your menu, and reserve easily. Should I send one example?"
-        )
-    if _industry_kind(context) == "architecture":
-        return (
-            "No problem. A website can still help clients trust your work, "
-            "view projects, and contact you easily. Should I still send one example?"
-        )
+def _future_contact_goodbye_text() -> str:
     return (
-        "No problem. A website can still help customers trust you, see your work, "
-        "and contact you easily. Should I still send one example?"
+        "No problem. Thanks for your time. If you ever need a website developer "
+        "or any tech help, you can contact us."
     )
 
 
