@@ -432,16 +432,27 @@ class AISDRCallingOrchestrator:
             text = "You're right, apologies. I called because I saw no website listed for you on Google Maps."
             should_end = False
             stage = "Website Discussion"
+        elif _mentions_pricing(latest):
+            text = (
+                "I do not want to give a random price on the call. "
+                "Please share your best number, and my owner will talk to you about requirements and pricing."
+            )
+            should_end = False
+            stage = "Pricing"
+        elif _mentions_wrong_industry(latest, context):
+            text = (
+                f"You're right, apologies. I mean a website for {context.business_name}, "
+                f"focused on {_industry_focus(context)}, not a restaurant website."
+            )
+            should_end = False
+            stage = "Website Discussion"
         elif _is_negative(latest):
             if "soft_no_reminder" in asked_questions:
                 text = "Totally understood. Thanks for your time, and have a good day."
                 should_end = True
                 stage = "Goodbye"
             else:
-                text = (
-                    "No problem. A website can still help customers trust you faster, "
-                    "see your menu, and reserve easily. Should I send one example?"
-                )
+                text = _soft_no_reminder_text(context)
                 should_end = False
                 stage = "Objection Handling"
         elif any(token in latest for token in ("who is", "who are", "other side", "hello")):
@@ -465,16 +476,27 @@ class AISDRCallingOrchestrator:
             should_end = False
             stage = "Opening"
         elif "google_maps_no_website" in asked_questions and "interest_check" not in asked_questions:
-            text = (
-                "A website can show your menu, photos, location, and reservations in one place. "
-                "I'm a graduate engineer and web developer, I've completed many projects, and I can make an attractive website for you. Are you interested?"
-            )
+            text = _interest_pitch_text(context)
             should_end = False
             stage = "Offer"
+        elif any(token in latest for token in ("how", "send", "example")) and "soft_no_reminder" in asked_questions:
+            text = (
+                "I can send examples on WhatsApp or email. Share the best number, "
+                "and my owner will follow up with you."
+            )
+            should_end = False
+            stage = "Follow-up"
         elif "contact_details" in asked_questions and (_mentions_contact_detail(latest) or _is_permission(latest)):
             text = "Perfect. We'll contact you for requirements and start with the first version. Thanks for your time."
             should_end = True
             stage = "Goodbye"
+        elif "contact_details" in asked_questions:
+            text = (
+                "No problem. Please share the best phone number, and my owner will contact you "
+                "to understand requirements and discuss the next step."
+            )
+            should_end = False
+            stage = "Follow-up"
         elif _is_permission(latest) and "interest_check" in asked_questions:
             text = (
                 "Great. What number should we contact? We'll ask your requirements, "
@@ -483,14 +505,11 @@ class AISDRCallingOrchestrator:
             should_end = False
             stage = "Follow-up"
         elif any(token in all_customer_text for token in ("reservation", "instagram", "whatsapp")):
-            text = (
-                "That makes sense. A website can bring your menu, photos, location, "
-                "and reservations into one professional place. Are you interested?"
-            )
+            text = _interest_pitch_text(context)
             should_end = False
             stage = "Offer"
         else:
-            text = "I will be brief. The reason for my call is a modern website for your restaurant."
+            text = _reason_for_call_text(context)
             should_end = False
             stage = "Offer"
         return AIResponse(
@@ -673,13 +692,13 @@ def _classify_ai_question(text: str) -> str:
         return "business_confirm"
     if "google maps" in lowered and "website" in lowered:
         return "google_maps_no_website"
-    if "helps people see your menu" in lowered:
-        return "website_benefit"
     if "are you interested" in lowered or "would be useful for you" in lowered or "would that be useful" in lowered:
         return "interest_check"
+    if "helps people see your menu" in lowered or "show your portfolio" in lowered or "show your services" in lowered:
+        return "website_benefit"
     if any(token in lowered for token in ("what number should we contact", "best whatsapp", "best email", "sending examples")):
         return "contact_details"
-    if "should i send one example" in lowered:
+    if "should i send one example" in lowered or "should i still send" in lowered:
         return "soft_no_reminder"
     return ""
 
@@ -719,6 +738,14 @@ def _is_permission(text: str) -> bool:
     )
 
 
+def _mentions_pricing(text: str) -> bool:
+    return any(token in text for token in ("cost", "price", "pricing", "amount", "charge", "charges", "budget"))
+
+
+def _mentions_wrong_industry(text: str, context: AIReasoningContext) -> bool:
+    return "restaurant" in text and _industry_kind(context) != "restaurant"
+
+
 def _is_negative(text: str) -> bool:
     cleaned = " ".join(text.replace(".", " ").replace(",", " ").replace("!", " ").split())
     return cleaned in {"no", "no thanks", "not now"} or any(
@@ -752,3 +779,63 @@ def _mentions_contact_source(text: str) -> bool:
 
 def _mentions_contact_detail(text: str) -> bool:
     return any(char.isdigit() for char in text) or "@" in text or "whatsapp" in text or "email" in text
+
+
+def _interest_pitch_text(context: AIReasoningContext) -> str:
+    benefit = _website_benefit_text(context)
+    return (
+        f"{benefit} I'm a graduate engineer and web developer, I've completed many projects, "
+        "and I can make an attractive website for you. Are you interested?"
+    )
+
+
+def _soft_no_reminder_text(context: AIReasoningContext) -> str:
+    if _industry_kind(context) == "restaurant":
+        return (
+            "No problem. A website can still help customers trust you faster, "
+            "see your menu, and reserve easily. Should I send one example?"
+        )
+    if _industry_kind(context) == "architecture":
+        return (
+            "No problem. A website can still help clients trust your work, "
+            "view projects, and contact you easily. Should I still send one example?"
+        )
+    return (
+        "No problem. A website can still help customers trust you, see your work, "
+        "and contact you easily. Should I still send one example?"
+    )
+
+
+def _reason_for_call_text(context: AIReasoningContext) -> str:
+    return f"I will be brief. The reason for my call is a modern website for {context.business_name}."
+
+
+def _website_benefit_text(context: AIReasoningContext) -> str:
+    if _industry_kind(context) == "restaurant":
+        return "A website can show your menu, photos, location, and reservations in one place."
+    if _industry_kind(context) == "architecture":
+        return "A website can show your portfolio, services, projects, and enquiry options clearly."
+    return "A website can show your services, work, location, and contact options clearly."
+
+
+def _industry_focus(context: AIReasoningContext) -> str:
+    if _industry_kind(context) == "architecture":
+        return "your portfolio, services, projects, and enquiries"
+    if _industry_kind(context) == "restaurant":
+        return "your menu, photos, location, and reservations"
+    return "your services, work, contact details, and customer enquiries"
+
+
+def _industry_kind(context: AIReasoningContext) -> str:
+    text = " ".join(
+        [
+            context.business_name,
+            context.industry,
+            context.objective,
+        ]
+    ).lower()
+    if any(token in text for token in ("restaurant", "cafe", "food", "dining")):
+        return "restaurant"
+    if any(token in text for token in ("architect", "architecture", "interior", "design studio")):
+        return "architecture"
+    return "generic"

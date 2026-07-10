@@ -832,6 +832,85 @@ class AISDRTests(unittest.TestCase):
         self.assertTrue(goodbye.should_end_call)
         self.assertIn("Thanks for your time", goodbye.text)
 
+    def test_calling_orchestrator_fallback_is_industry_aware_and_hands_off_pricing(self) -> None:
+        class FailingLLMProvider:
+            name = "failing"
+
+            async def generate_next_response(self, context: AIReasoningContext):  # type: ignore[no-untyped-def]
+                raise RuntimeError("llm unavailable")
+
+            async def summarize_call(self, context: AIReasoningContext) -> CallOutcome:
+                return CallOutcome(
+                    conversation_summary="Fallback summary.",
+                    qualification_score=0,
+                    interested=False,
+                    reason="Test summary.",
+                )
+
+        with Session(self.engine) as db:
+            lead = Lead(
+                dedupe_key="domain:grey-architect.example",
+                business_name="Grey Architect",
+                contact_name="Zain",
+                phone="+447898529998",
+                city="Nottingham",
+                business_type="Architecture Firm",
+                source="ai_sdr",
+            )
+            db.add(lead)
+            db.commit()
+
+            orchestrator = AISDRCallingOrchestrator(
+                settings=AISDRSettings(_env_file=None, calling_mode="mock", twilio_validate_signature=False),
+                providers=CallingProviderStack(
+                    telephony=MockTelephonyProvider(),
+                    llm=FailingLLMProvider(),
+                    speech=MockSpeechProvider(),
+                ),
+                registry=AISDRCallSessionRegistry(),
+            )
+
+            async def run_turns() -> list[str]:
+                started = await orchestrator.start_outbound_call(db, contact_id=lead.id, actor="QA")
+                replies: list[str] = []
+                for text in (
+                    "Yes.",
+                    "Gray Architect.",
+                    "Yes, I'm interested.",
+                    "Thank you.",
+                    "What would the cost be?",
+                    "I don't have a restaurant.",
+                    "I don't need a website.",
+                    "How are you going to send the example?",
+                ):
+                    updated = await orchestrator.inject_transcript(
+                        db,
+                        call_id=started.id,
+                        role="customer",
+                        text=text,
+                        actor="QA",
+                    )
+                    ai_lines = [line.text for line in updated.transcript if line.role == "ai"]
+                    replies.append(ai_lines[-1])
+                return replies
+
+            replies = asyncio.run(run_turns())
+            joined = " ".join(replies).lower()
+
+            self.assertIn("portfolio", replies[1])
+            self.assertIn("projects", replies[1])
+            self.assertIn("What number should we contact", replies[2])
+            self.assertIn("Please share the best phone number", replies[3])
+            self.assertIn("random price", replies[4])
+            self.assertIn("my owner will talk to you", replies[4])
+            self.assertIn("not a restaurant website", replies[5])
+            self.assertIn("clients trust your work", replies[6])
+            self.assertIn("WhatsApp or email", replies[7])
+            self.assertNotIn("your restaurant", joined)
+            self.assertNotIn("your menu", joined)
+            self.assertNotIn("reservations into one", joined)
+            self.assertNotIn("the reason for my call is a modern website for your restaurant", joined)
+
     def test_calling_orchestrator_fallback_apologizes_without_repeating_question(self) -> None:
         context = AIReasoningContext(
             call_id="call-123",
