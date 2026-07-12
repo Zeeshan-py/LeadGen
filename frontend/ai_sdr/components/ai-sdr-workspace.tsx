@@ -11,6 +11,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Bot,
   BriefcaseBusiness,
   CalendarClock,
   Download,
@@ -381,7 +382,7 @@ export function AISDRWorkspace() {
       <Card>
         <CardHeader className="gap-2">
           <CardTitle>Custom Call Target</CardTitle>
-          <CardDescription>Business details, offer, and AI talk track for one focused outbound call</CardDescription>
+          <CardDescription>Business details for a manual call, with AI calling kept as a separate option</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={submitCustomCall} className="grid gap-4">
@@ -498,10 +499,13 @@ export function AISDRWorkspace() {
                 <Badge variant="outline">CRM Stored</Badge>
                 <Badge variant="outline">Custom Objective</Badge>
               </div>
-              <Button type="submit" disabled={customCallSubmitting}>
-                <Phone data-icon="inline-start" />
-                {customCallSubmitting ? "Starting Call" : "Start Custom Call"}
-              </Button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <ManualCallButton phone={customCall.phone} label="Manual Call" />
+                <Button type="submit" variant="outline" disabled={customCallSubmitting}>
+                  <Bot data-icon="inline-start" />
+                  {customCallSubmitting ? "Starting AI Call" : "Start AI Call"}
+                </Button>
+              </div>
             </div>
           </form>
         </CardContent>
@@ -640,14 +644,15 @@ export function AISDRWorkspace() {
                         <Eye />
                         <span className="sr-only">View profile</span>
                       </Button>
+                      <ManualCallButton phone={contact.phone} iconOnly />
                       <Button variant="ghost" size="icon-sm" asChild>
                         <Link
                           href={`/ai-sdr/call?contactId=${contact.id}`}
                           scroll={false}
-                          title="Open AI Calling Workspace"
+                          title="Start AI calling workspace"
                         >
-                          <Phone />
-                          <span className="sr-only">Call contact</span>
+                          <Bot />
+                          <span className="sr-only">Start AI call</span>
                         </Link>
                       </Button>
                       <DropdownMenu>
@@ -732,6 +737,48 @@ function FilterSelect({
   );
 }
 
+function ManualCallButton({
+  phone,
+  label = "Manual Call",
+  iconOnly = false,
+}: {
+  phone: string;
+  label?: string;
+  iconOnly?: boolean;
+}) {
+  const href = manualCallHref(phone);
+  const title = href ? "Manual call from your device. AI will not speak." : "No phone number available";
+
+  if (!href) {
+    return (
+      <Button variant={iconOnly ? "ghost" : "default"} size={iconOnly ? "icon-sm" : "default"} disabled title={title}>
+        <Phone data-icon={iconOnly ? undefined : "inline-start"} />
+        {iconOnly ? <span className="sr-only">{label}</span> : label}
+      </Button>
+    );
+  }
+
+  return (
+    <Button variant={iconOnly ? "ghost" : "default"} size={iconOnly ? "icon-sm" : "default"} asChild>
+      <a
+        href={href}
+        title={title}
+        onClick={() => toast.info("Manual call opened. The AI agent will not speak.")}
+      >
+        <Phone data-icon={iconOnly ? undefined : "inline-start"} />
+        {iconOnly ? <span className="sr-only">{label}</span> : label}
+      </a>
+    </Button>
+  );
+}
+
+function manualCallHref(phone: string) {
+  const normalized = phone.trim().replace(/[^\d+]/g, "");
+  const digitCount = normalized.replace(/\D/g, "").length;
+  if (digitCount < 5) return "";
+  return `tel:${normalized}`;
+}
+
 function ContactProfileSheet({
   contact,
   onOpenChange,
@@ -793,10 +840,11 @@ function ContactProfileSheet({
               </div>
             </div>
             <SheetFooter>
-              <Button asChild>
+              <ManualCallButton phone={contact.phone} label="Manual Call" />
+              <Button variant="outline" asChild>
                 <Link href={`/ai-sdr/call?contactId=${contact.id}`} scroll={false}>
-                  <Phone data-icon="inline-start" />
-                  Call
+                  <Bot data-icon="inline-start" />
+                  AI Call
                 </Link>
               </Button>
               <Button variant="outline" asChild>
