@@ -15,7 +15,9 @@ from ai_sdr.calling.interfaces import (
     AIReasoningContext,
     CallOutcome,
     OutboundCallRequest,
+    OutboundCallResult,
     ProviderConfigurationError,
+    ProviderError,
     TranscriptSegment,
 )
 from ai_sdr.calling.orchestrator import AISDRCallingOrchestrator
@@ -384,6 +386,104 @@ class AISDRTests(unittest.TestCase):
         self.assertNotIn("async_amd", fake_client.calls.kwargs)
         self.assertIn("+447898529998", twiml)
         self.assertIn("+13322864743", twiml)
+
+    def test_twilio_provider_manual_bridge_reports_create_failure(self) -> None:
+        class TwilioFailure(Exception):
+            code = 21205
+            status = 400
+            msg = "Invalid URL"
+
+        class FakeCalls:
+            def create(self, **kwargs: object) -> object:
+                raise TwilioFailure("Invalid URL")
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls = FakeCalls()
+
+        provider = TwilioTelephonyProvider(
+            AISDRSettings(
+                _env_file=None,
+                public_url="https://leadforage.up.railway.app",
+                twilio_account_sid="AC123",
+                twilio_auth_token="secret",
+            )
+        )
+        provider._client = FakeClient()
+        request = OutboundCallRequest(
+            call_id="manual-123",
+            contact_id="lead-123",
+            to_number="+923001112222",
+            from_number="+13322864743",
+            voice_webhook_url="https://leadforage.up.railway.app/ai-sdr/calls/twilio/manual-bridge?call_id=manual-123",
+            status_callback_url=(
+                "https://leadforage.up.railway.app/ai-sdr/calls/twilio/manual-bridge/status?call_id=manual-123"
+            ),
+            media_stream_url="",
+            metadata={"manual_bridge": True, "target_number": "+447898529998"},
+        )
+
+        with self.assertRaisesRegex(ProviderError, "Provider details: code=21205"):
+            asyncio.run(provider.start_outbound_call(request))
+
+    def test_manual_bridge_requires_owner_phone_country_code(self) -> None:
+        orchestrator = AISDRCallingOrchestrator(
+            settings=AISDRSettings(_env_file=None, calling_mode="mock"),
+            providers=CallingProviderStack(
+                telephony=MockTelephonyProvider(),
+                llm=MockLLMProvider(),
+                speech=MockSpeechProvider(),
+            ),
+            registry=AISDRCallSessionRegistry(),
+        )
+
+        with Session(self.engine) as db:
+            with self.assertRaisesRegex(ValueError, "Your phone number must include country code"):
+                asyncio.run(
+                    orchestrator.start_manual_bridge_call(
+                        db,
+                        to_number="+442082204389",
+                        business_name="Studio Bloom",
+                        owner_number="03493026762",
+                    )
+                )
+
+    def test_manual_bridge_normalizes_formatted_phone_numbers(self) -> None:
+        class RecordingTelephonyProvider(MockTelephonyProvider):
+            def __init__(self) -> None:
+                self.last_request: OutboundCallRequest | None = None
+
+            async def start_outbound_call(self, request: OutboundCallRequest) -> OutboundCallResult:
+                self.last_request = request
+                return await super().start_outbound_call(request)
+
+        telephony = RecordingTelephonyProvider()
+        orchestrator = AISDRCallingOrchestrator(
+            settings=AISDRSettings(_env_file=None, calling_mode="mock"),
+            providers=CallingProviderStack(
+                telephony=telephony,
+                llm=MockLLMProvider(),
+                speech=MockSpeechProvider(),
+            ),
+            registry=AISDRCallSessionRegistry(),
+        )
+
+        with Session(self.engine) as db:
+            response = asyncio.run(
+                orchestrator.start_manual_bridge_call(
+                    db,
+                    to_number="+44 20 8220 4389",
+                    business_name="Studio Bloom",
+                    owner_number="+92 300-111-2222",
+                )
+            )
+
+        self.assertIsNotNone(telephony.last_request)
+        assert telephony.last_request is not None
+        self.assertEqual(response["target_number"], "+442082204389")
+        self.assertEqual(response["owner_number"], "+923001112222")
+        self.assertEqual(telephony.last_request.to_number, "+923001112222")
+        self.assertEqual(telephony.last_request.metadata["target_number"], "+442082204389")
 
     def test_twilio_voice_response_uses_stream_parameter_for_call_id(self) -> None:
         provider = TwilioTelephonyProvider(AISDRSettings(_env_file=None))

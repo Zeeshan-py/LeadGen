@@ -12,6 +12,7 @@ from ai_sdr.calling.interfaces import (
     OutboundCallRequest,
     OutboundCallResult,
     ProviderConfigurationError,
+    ProviderError,
     TelephonyMediaEvent,
     TelephonyProvider,
 )
@@ -46,7 +47,16 @@ class TwilioTelephonyProvider(TelephonyProvider):
         }
         if not request.metadata.get("manual_bridge"):
             create_kwargs.update({"machine_detection": "Enable", "async_amd": "true"})
-        call = client.calls.create(**create_kwargs)
+        try:
+            call = client.calls.create(**create_kwargs)
+        except Exception as exc:
+            details = self._twilio_error_details(exc)
+            raise ProviderError(
+                "Twilio could not create the call. "
+                "Check that both phone numbers include country code, your Twilio number can make outbound calls, "
+                "and trial accounts have verified the numbers being called. "
+                f"{details}"
+            ) from exc
         return OutboundCallResult(
             provider_call_id=str(call.sid),
             status=str(getattr(call, "status", "queued") or "queued"),
@@ -174,3 +184,15 @@ class TwilioTelephonyProvider(TelephonyProvider):
             raise ProviderConfigurationError(
                 f"Twilio {parameter_name} must be an absolute HTTPS URL. Current value: {value or '<empty>'}"
             )
+
+    @staticmethod
+    def _twilio_error_details(exc: Exception) -> str:
+        parts: list[str] = []
+        for attr in ("code", "status", "msg"):
+            value = getattr(exc, attr, None)
+            if value:
+                parts.append(f"{attr}={value}")
+        message = str(exc).strip()
+        if message and not parts:
+            parts.append(message[:300])
+        return "Provider details: " + "; ".join(parts) if parts else ""

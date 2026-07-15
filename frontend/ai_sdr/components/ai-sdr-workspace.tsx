@@ -819,13 +819,22 @@ function getOwnerPhoneForManualCall() {
   const storageKey = "leadforge_manual_sdr_owner_phone";
   const saved = window.localStorage.getItem(storageKey) || "";
   const entered = window.prompt(
-    "Enter your phone number. Twilio will call you first, then connect you to the business.",
+    "Enter your phone number with country code. Twilio will call you first, then connect you to the business. Example: +923001234567",
     saved,
   );
-  const normalized = (entered || "").trim().replace(/[^\d+]/g, "");
-  if (!normalized) return "";
+  if (entered === null) return "";
+  const normalized = normalizeE164Phone(entered);
+  if (!normalized) {
+    toast.error("Enter your phone number with country code, for example +923001234567.");
+    return "";
+  }
   window.localStorage.setItem(storageKey, normalized);
   return normalized;
+}
+
+function normalizeE164Phone(value: string) {
+  const normalized = value.trim().replace(/[\s().-]+/g, "").replace(/^00/, "+");
+  return /^\+[1-9]\d{7,14}$/.test(normalized) ? normalized : "";
 }
 
 function ContactProfileSheet({

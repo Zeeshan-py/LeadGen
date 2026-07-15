@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import uuid
 from contextlib import suppress
 from datetime import datetime, timezone
@@ -44,6 +45,22 @@ from app.models import Lead
 
 
 logger = logging.getLogger(__name__)
+
+_E164_RE = re.compile(r"^\+[1-9]\d{7,14}$")
+
+
+def _normalize_manual_phone_number(value: str, label: str) -> str:
+    raw = value.strip()
+    if not raw:
+        raise ValueError(f"{label} is required for manual SDR calls.")
+    normalized = re.sub(r"[\s().-]+", "", raw)
+    if normalized.startswith("00"):
+        normalized = f"+{normalized[2:]}"
+    if not normalized.startswith("+"):
+        raise ValueError(f"{label} must include country code, for example +923001234567.")
+    if not _E164_RE.fullmatch(normalized):
+        raise ValueError(f"{label} must be a valid international E.164 phone number, for example +923001234567.")
+    return normalized
 
 
 class AISDRCallingOrchestrator:
@@ -80,7 +97,9 @@ class AISDRCallingOrchestrator:
             contact_label = business_name.strip() or lead.business_name
         if not target_number:
             raise ValueError("Manual SDR call target does not have a phone number.")
+        target_number = _normalize_manual_phone_number(target_number, "Business phone")
         owner_number = owner_number.strip() or self.settings.manual_call_owner_number
+        owner_number = _normalize_manual_phone_number(owner_number, "Your phone number")
         if self.settings.calling_mode != "mock":
             self.settings.require_manual_bridge_credentials(owner_number)
         call_id = f"manual-{uuid.uuid4()}"
@@ -111,7 +130,23 @@ class AISDRCallingOrchestrator:
             "created_at": utc_now().isoformat(),
             "actor": actor,
         }
-        result = await self.providers.telephony.start_outbound_call(request)
+        try:
+            result = await self.providers.telephony.start_outbound_call(request)
+        except ProviderError:
+            self.manual_bridge_calls[call_id]["status"] = "failed"
+            self.manual_bridge_calls[call_id]["updated_at"] = utc_now().isoformat()
+            raise
+        except Exception as exc:
+            self.manual_bridge_calls[call_id]["status"] = "failed"
+            self.manual_bridge_calls[call_id]["updated_at"] = utc_now().isoformat()
+            message = str(exc).strip()
+            hint = (
+                "Manual SDR call provider failed. Use phone numbers with country code, and make sure Twilio "
+                "is allowed to call both your phone and the business number."
+            )
+            if message:
+                hint = f"{hint} Provider said: {message[:240]}"
+            raise RuntimeError(hint) from exc
         self.manual_bridge_calls[call_id].update(
             {
                 "status": result.status,
