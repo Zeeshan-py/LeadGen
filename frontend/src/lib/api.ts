@@ -185,4 +185,22 @@ export function syncCrmGmail(id: string) {
   });
 }
 
+export function startManualSdrBridgeCall(payload: {
+  contact_id?: string;
+  to_phone?: string;
+  business_name?: string;
+  owner_phone?: string;
+}) {
+  return request<{
+    id: string;
+    status: string;
+    provider_call_id: string;
+    business_name: string;
+    target_number: string;
+  }>("/ai-sdr/calls/manual-bridge", {
+    method: "POST",
+    body: JSON.stringify({ ...payload, actor: "LeadForge user" }),
+  });
+}
+
 export type { GenerationJob };

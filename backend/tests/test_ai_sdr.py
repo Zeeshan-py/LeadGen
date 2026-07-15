@@ -338,6 +338,53 @@ class AISDRTests(unittest.TestCase):
         with self.assertRaisesRegex(ProviderConfigurationError, "absolute HTTPS URL"):
             asyncio.run(provider.start_outbound_call(request))
 
+    def test_twilio_provider_manual_bridge_skips_ai_detection_and_dials_target(self) -> None:
+        class FakeCalls:
+            def __init__(self) -> None:
+                self.kwargs: dict[str, object] = {}
+
+            def create(self, **kwargs: object) -> object:
+                self.kwargs = kwargs
+                return type("FakeCall", (), {"sid": "CA456", "status": "queued"})()
+
+        class FakeClient:
+            def __init__(self) -> None:
+                self.calls = FakeCalls()
+
+        fake_client = FakeClient()
+        provider = TwilioTelephonyProvider(
+            AISDRSettings(
+                _env_file=None,
+                public_url="https://leadforage.up.railway.app",
+                twilio_account_sid="AC123",
+                twilio_auth_token="secret",
+            )
+        )
+        provider._client = fake_client
+        request = OutboundCallRequest(
+            call_id="manual-123",
+            contact_id="lead-123",
+            to_number="+923001112222",
+            from_number="+13322864743",
+            voice_webhook_url="https://leadforage.up.railway.app/ai-sdr/calls/twilio/manual-bridge?call_id=manual-123",
+            status_callback_url=(
+                "https://leadforage.up.railway.app/ai-sdr/calls/twilio/manual-bridge/status?call_id=manual-123"
+            ),
+            media_stream_url="",
+            metadata={"manual_bridge": True, "target_number": "+447898529998"},
+        )
+
+        result = asyncio.run(provider.start_outbound_call(request))
+        twiml = provider.build_manual_bridge_response(target_number="+447898529998", caller_id="+13322864743")
+
+        self.assertEqual(result.provider_call_id, "CA456")
+        self.assertEqual(fake_client.calls.kwargs["to"], "+923001112222")
+        self.assertEqual(fake_client.calls.kwargs["url"], request.voice_webhook_url)
+        self.assertNotIn("machine_detection", fake_client.calls.kwargs)
+        self.assertNotIn("async_amd", fake_client.calls.kwargs)
+        self.assertIn("+447898529998", twiml)
+        self.assertIn("+13322864743", twiml)
+
     def test_twilio_voice_response_uses_stream_parameter_for_call_id(self) -> None:
         provider = TwilioTelephonyProvider(AISDRSettings(_env_file=None))
 

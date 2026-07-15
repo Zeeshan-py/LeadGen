@@ -42,6 +42,14 @@ class AISDRSettings(BaseSettings):
     llm_provider: str = Field(default="gemini", validation_alias="AI_SDR_LLM_PROVIDER")
     speech_provider: str = Field(default="cartesia", validation_alias="AI_SDR_SPEECH_PROVIDER")
     call_from_number: str = Field(default="", validation_alias="AI_SDR_CALL_FROM_NUMBER")
+    manual_call_owner_number: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "AI_SDR_MANUAL_CALL_OWNER_NUMBER",
+            "AI_SDR_OWNER_PHONE_NUMBER",
+            "LEADFORGE_OWNER_PHONE",
+        ),
+    )
     call_default_objective: str = Field(
         default="Qualify the business need, identify website or follow-up gaps, and book the best next step.",
         validation_alias="AI_SDR_CALL_DEFAULT_OBJECTIVE",
@@ -110,6 +118,17 @@ class AISDRSettings(BaseSettings):
     def status_callback_url(self, call_id: str) -> str:
         return _join_url(self.public_url, self.api_prefix, "calls/twilio/status", query={"call_id": call_id})
 
+    def manual_bridge_webhook_url(self, call_id: str) -> str:
+        return _join_url(self.public_url, self.api_prefix, "calls/twilio/manual-bridge", query={"call_id": call_id})
+
+    def manual_bridge_status_callback_url(self, call_id: str) -> str:
+        return _join_url(
+            self.public_url,
+            self.api_prefix,
+            "calls/twilio/manual-bridge/status",
+            query={"call_id": call_id},
+        )
+
     @property
     def public_backend_url(self) -> str:
         return self.public_url
@@ -173,6 +192,27 @@ class AISDRSettings(BaseSettings):
             )
         if missing:
             raise RuntimeError("Missing required AI SDR calling environment variables: " + ", ".join(missing))
+
+    def require_manual_bridge_credentials(self, owner_number: str) -> None:
+        if not self.calling_enabled:
+            raise RuntimeError("AI SDR calling is disabled.")
+        if self.telephony_provider == "twilio":
+            self._require_absolute_https_public_url("PUBLIC_URL", self.public_url)
+        missing: list[str] = []
+        if self.telephony_provider == "twilio":
+            missing.extend(
+                name
+                for name, value in {
+                    "TWILIO_ACCOUNT_SID": self.twilio_account_sid,
+                    "TWILIO_AUTH_TOKEN": self.twilio_auth_token,
+                    "AI_SDR_CALL_FROM_NUMBER": self.call_from_number,
+                }.items()
+                if not value
+            )
+        if not owner_number.strip():
+            missing.append("AI_SDR_MANUAL_CALL_OWNER_NUMBER or owner_phone")
+        if missing:
+            raise RuntimeError("Missing required manual SDR calling environment variables: " + ", ".join(missing))
 
 
 @lru_cache(maxsize=1)

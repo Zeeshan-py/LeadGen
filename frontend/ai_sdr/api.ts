@@ -16,6 +16,8 @@ import type {
   AISDRDashboardParams,
   AISDRImportPayload,
   AISDRImportResponse,
+  AISDRManualBridgeCallPayload,
+  AISDRManualBridgeCallResponse,
   AISDRSourceDescriptor,
 } from "./types";
 
@@ -89,6 +91,16 @@ export function startAISDROutboundCall(contactId: string, objective?: string) {
 
 export function startAISDRCustomTargetCall(payload: AISDRCustomCallTarget) {
   return request<AISDRCustomCallResponse>("/ai-sdr/calls/custom-target", {
+    method: "POST",
+    body: JSON.stringify({
+      ...payload,
+      actor: payload.actor ?? "LeadForge user",
+    }),
+  });
+}
+
+export function startAISDRManualBridgeCall(payload: AISDRManualBridgeCallPayload) {
+  return request<AISDRManualBridgeCallResponse>("/ai-sdr/calls/manual-bridge", {
     method: "POST",
     body: JSON.stringify({
       ...payload,

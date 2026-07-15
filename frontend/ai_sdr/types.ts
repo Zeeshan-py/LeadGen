@@ -227,3 +227,24 @@ export type AISDRCustomCallResponse = {
   contact: AISDRContact;
   call: AISDRCallSession;
 };
+
+export type AISDRManualBridgeCallPayload = {
+  contact_id?: string;
+  to_phone?: string;
+  business_name?: string;
+  owner_phone?: string;
+  actor?: string;
+};
+
+export type AISDRManualBridgeCallResponse = {
+  id: string;
+  contact_id: string;
+  business_name: string;
+  owner_number: string;
+  target_number: string;
+  status: string;
+  provider_call_id: string;
+  created_at: string;
+  actor: string;
+  raw: Record<string, unknown>;
+};

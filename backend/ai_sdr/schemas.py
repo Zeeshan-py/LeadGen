@@ -227,6 +227,27 @@ class AISDRCallStart(BaseModel):
     actor: str = Field(default="LeadForge user", max_length=160)
 
 
+class AISDRManualBridgeCallStart(BaseModel):
+    contact_id: str = Field(default="", max_length=120)
+    to_phone: str = Field(default="", max_length=80)
+    business_name: str = Field(default="", max_length=240)
+    owner_phone: str = Field(default="", max_length=80)
+    actor: str = Field(default="LeadForge user", max_length=160)
+
+
+class AISDRManualBridgeCallResponse(BaseModel):
+    id: str
+    contact_id: str
+    business_name: str
+    owner_number: str
+    target_number: str
+    status: str
+    provider_call_id: str
+    created_at: str
+    actor: str
+    raw: dict[str, Any] = Field(default_factory=dict)
+
+
 class AISDRCustomCallTarget(BaseModel):
     business_name: str = Field(min_length=1, max_length=240)
     owner_name: str = Field(default="", max_length=180)

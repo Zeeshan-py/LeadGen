@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import uuid
 from contextlib import suppress
 from datetime import datetime, timezone
 from collections.abc import Awaitable, Callable
@@ -59,6 +60,91 @@ class AISDRCallingOrchestrator:
         self.providers = providers or build_calling_provider_stack(self.settings)
         self.registry = registry or default_call_session_registry
         self.memory_extractor = SalesMemoryExtractor()
+        self.manual_bridge_calls: dict[str, dict[str, Any]] = {}
+
+    async def start_manual_bridge_call(
+        self,
+        db: Session,
+        *,
+        contact_id: str = "",
+        to_number: str = "",
+        business_name: str = "",
+        owner_number: str = "",
+        actor: str = "",
+    ) -> dict[str, Any]:
+        target_number = to_number.strip()
+        contact_label = business_name.strip() or "Manual SDR target"
+        if contact_id:
+            lead = self._require_lead(db, contact_id)
+            target_number = target_number or lead.phone
+            contact_label = business_name.strip() or lead.business_name
+        if not target_number:
+            raise ValueError("Manual SDR call target does not have a phone number.")
+        owner_number = owner_number.strip() or self.settings.manual_call_owner_number
+        if self.settings.calling_mode != "mock":
+            self.settings.require_manual_bridge_credentials(owner_number)
+        call_id = f"manual-{uuid.uuid4()}"
+        actor = actor.strip() or self.settings.default_actor
+        request = OutboundCallRequest(
+            call_id=call_id,
+            contact_id=contact_id or "manual-target",
+            to_number=owner_number,
+            from_number=self.settings.call_from_number,
+            voice_webhook_url=self.settings.manual_bridge_webhook_url(call_id),
+            status_callback_url=self.settings.manual_bridge_status_callback_url(call_id),
+            media_stream_url="",
+            metadata={
+                "manual_bridge": True,
+                "target_number": target_number,
+                "business_name": contact_label,
+                "actor": actor,
+            },
+        )
+        self.manual_bridge_calls[call_id] = {
+            "id": call_id,
+            "contact_id": contact_id,
+            "business_name": contact_label,
+            "owner_number": owner_number,
+            "target_number": target_number,
+            "status": "queued",
+            "provider_call_id": "",
+            "created_at": utc_now().isoformat(),
+            "actor": actor,
+        }
+        result = await self.providers.telephony.start_outbound_call(request)
+        self.manual_bridge_calls[call_id].update(
+            {
+                "status": result.status,
+                "provider_call_id": result.provider_call_id,
+                "raw": result.raw,
+            }
+        )
+        return dict(self.manual_bridge_calls[call_id])
+
+    def build_manual_bridge_response(self, call_id: str) -> str:
+        bridge = self.manual_bridge_calls.get(call_id)
+        if not bridge:
+            raise LookupError("Manual SDR bridge call not found.")
+        target_number = str(bridge.get("target_number") or "")
+        if not target_number:
+            raise LookupError("Manual SDR bridge call does not have a target number.")
+        builder = getattr(self.providers.telephony, "build_manual_bridge_response", None)
+        if callable(builder):
+            return str(builder(target_number=target_number, caller_id=self.settings.call_from_number))
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            f'<Response><Dial callerId="{self.settings.call_from_number}"><Number>{target_number}</Number></Dial></Response>'
+        )
+
+    def handle_manual_bridge_status(self, call_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+        bridge = self.manual_bridge_calls.get(call_id)
+        if not bridge:
+            return None
+        status = str(payload.get("CallStatus") or payload.get("call_status") or bridge.get("status") or "unknown")
+        bridge["status"] = status
+        bridge["status_payload"] = payload
+        bridge["updated_at"] = utc_now().isoformat()
+        return dict(bridge)
 
     async def start_outbound_call(
         self,

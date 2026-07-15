@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { Download, Edit3, ExternalLink, Link2, MoreHorizontal, Search } from "lucide-react";
+import { Download, Edit3, ExternalLink, Link2, MapPin, MoreHorizontal, Phone, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/status-badge";
@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { csvExportUrl, getCampaigns, getLeads, updateLead } from "@/lib/api";
+import { csvExportUrl, getCampaigns, getLeads, startManualSdrBridgeCall, updateLead } from "@/lib/api";
 import { businessTypes, continents, countriesByContinent } from "@/lib/markets";
 import type { Campaign, Lead } from "@/lib/types";
 
@@ -259,7 +259,7 @@ export default function LeadsPage() {
               <TableHead>Website</TableHead>
               <TableHead>Email</TableHead>
               <TableHead>Phone</TableHead>
-              <TableHead>Location</TableHead>
+              <TableHead>Map</TableHead>
               <TableHead>Socials</TableHead>
               <TableHead>Outreach</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -303,14 +303,17 @@ export default function LeadsPage() {
                 </TableCell>
                 <TableCell>
                   {lead.phone ? (
-                    <a className="text-primary hover:underline" href={`tel:${lead.phone}`}>
-                      {lead.phone}
-                    </a>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs">{lead.phone}</span>
+                      <ManualSdrLeadCallButton lead={lead} />
+                    </div>
                   ) : (
                     <span className="text-muted-foreground">Missing</span>
                   )}
                 </TableCell>
-                <TableCell className="max-w-[260px] truncate">{lead.location}</TableCell>
+                <TableCell>
+                  <MapLinkCell lead={lead} />
+                </TableCell>
                 <TableCell className="min-w-[210px]">
                   <SocialLinksCell lead={lead} />
                 </TableCell>
@@ -341,9 +344,15 @@ export default function LeadsPage() {
                         {lead.google_maps_url ? (
                           <DropdownMenuItem asChild>
                             <a href={lead.google_maps_url} target="_blank" rel="noreferrer">
-                              <ExternalLink />
+                              <MapPin />
                               Open Maps
                             </a>
+                          </DropdownMenuItem>
+                        ) : null}
+                        {lead.phone ? (
+                          <DropdownMenuItem onClick={() => startManualLeadCall(lead)}>
+                            <Phone />
+                            Manual SDR Call
                           </DropdownMenuItem>
                         ) : null}
                       </DropdownMenuGroup>
@@ -422,6 +431,72 @@ export default function LeadsPage() {
       </Dialog>
     </div>
   );
+}
+
+async function startManualLeadCall(lead: Lead) {
+  const ownerPhone = getOwnerPhoneForManualCall();
+  if (!ownerPhone) return;
+  try {
+    await startManualSdrBridgeCall({
+      to_phone: lead.phone,
+      business_name: lead.business_name,
+      owner_phone: ownerPhone,
+    });
+    toast.success("Manual SDR call started. Answer your phone to connect to the business.");
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : "Manual SDR call could not start");
+  }
+}
+
+function ManualSdrLeadCallButton({ lead }: { lead: Lead }) {
+  return (
+    <Button
+      type="button"
+      size="icon-xs"
+      variant="outline"
+      onClick={() => startManualLeadCall(lead)}
+      title="Manual SDR call through Twilio. AI will not speak."
+      aria-label={`Manual SDR call ${lead.business_name}`}
+    >
+      <Phone />
+    </Button>
+  );
+}
+
+function MapLinkCell({ lead }: { lead: Lead }) {
+  const href = lead.google_maps_url || googleMapsSearchUrl(lead);
+  if (!href) {
+    return <span className="text-muted-foreground">Missing</span>;
+  }
+  return (
+    <Button asChild size="sm" variant="outline" className="h-7 px-2 text-xs">
+      <a href={href} target="_blank" rel="noreferrer" aria-label={`Open Google Maps for ${lead.business_name}`}>
+        <MapPin data-icon="inline-start" className="size-3.5" />
+        Maps
+      </a>
+    </Button>
+  );
+}
+
+function googleMapsSearchUrl(lead: Lead) {
+  const query = [lead.business_name, lead.location, lead.city, lead.state, lead.country]
+    .filter(Boolean)
+    .join(", ");
+  if (!query.trim()) return "";
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function getOwnerPhoneForManualCall() {
+  const storageKey = "leadforge_manual_sdr_owner_phone";
+  const saved = window.localStorage.getItem(storageKey) || "";
+  const entered = window.prompt(
+    "Enter your phone number. Twilio will call you first, then connect you to the business.",
+    saved,
+  );
+  const normalized = (entered || "").trim().replace(/[^\d+]/g, "");
+  if (!normalized) return "";
+  window.localStorage.setItem(storageKey, normalized);
+  return normalized;
 }
 
 function SocialLinksCell({ lead }: { lead: Lead }) {

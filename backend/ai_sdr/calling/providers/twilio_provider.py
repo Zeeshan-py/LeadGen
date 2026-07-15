@@ -36,16 +36,17 @@ class TwilioTelephonyProvider(TelephonyProvider):
         self._require_https_url("status_callback", request.status_callback_url)
         client = self._twilio_client()
         logger.info("AI SDR Twilio client.calls.create url=%s", request.voice_webhook_url)
-        call = client.calls.create(
-            to=request.to_number,
-            from_=request.from_number,
-            url=request.voice_webhook_url,
-            status_callback=request.status_callback_url,
-            status_callback_method="POST",
-            status_callback_event=["initiated", "ringing", "answered", "completed"],
-            machine_detection="Enable",
-            async_amd="true",
-        )
+        create_kwargs: dict[str, Any] = {
+            "to": request.to_number,
+            "from_": request.from_number,
+            "url": request.voice_webhook_url,
+            "status_callback": request.status_callback_url,
+            "status_callback_method": "POST",
+            "status_callback_event": ["initiated", "ringing", "answered", "completed"],
+        }
+        if not request.metadata.get("manual_bridge"):
+            create_kwargs.update({"machine_detection": "Enable", "async_amd": "true"})
+        call = client.calls.create(**create_kwargs)
         return OutboundCallResult(
             provider_call_id=str(call.sid),
             status=str(getattr(call, "status", "queued") or "queued"),
@@ -78,6 +79,21 @@ class TwilioTelephonyProvider(TelephonyProvider):
         stream.append(Parameter(name="call_id", value=call_id))
         connect.append(stream)
         response.append(connect)
+        return str(response)
+
+    def build_manual_bridge_response(self, *, target_number: str, caller_id: str) -> str:
+        try:
+            from twilio.twiml.voice_response import Dial, Number, VoiceResponse
+        except ImportError:
+            return (
+                '<?xml version="1.0" encoding="UTF-8"?>'
+                f"<Response><Dial callerId=\"{caller_id}\"><Number>{target_number}</Number></Dial></Response>"
+            )
+
+        response = VoiceResponse()
+        dial = Dial(caller_id=caller_id)
+        dial.append(Number(target_number))
+        response.append(dial)
         return str(response)
 
     def parse_status_update(self, payload: dict[str, Any]) -> CallStatusUpdate:

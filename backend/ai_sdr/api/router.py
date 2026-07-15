@@ -35,6 +35,8 @@ from ai_sdr.schemas import (
     AISDRImportResponse,
     AISDRImportStatus,
     AISDRManualContactCreate,
+    AISDRManualBridgeCallResponse,
+    AISDRManualBridgeCallStart,
     AISDRRestContactsCreate,
     AISDRSourceDescriptor,
     AISDRSourceType,
@@ -82,6 +84,28 @@ async def start_outbound_call(
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return session.to_dict()
+
+
+@router.post("/calls/manual-bridge", response_model=AISDRManualBridgeCallResponse)
+async def start_manual_bridge_call(
+    payload: AISDRManualBridgeCallStart,
+    db: Session = Depends(get_db),
+) -> dict:
+    try:
+        return await default_calling_orchestrator.start_manual_bridge_call(
+            db,
+            contact_id=payload.contact_id,
+            to_number=payload.to_phone,
+            business_name=payload.business_name,
+            owner_number=payload.owner_phone,
+            actor=payload.actor,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.post("/calls/custom-target", response_model=AISDRCustomCallResponse)
@@ -251,6 +275,26 @@ async def twilio_status_callback(
     )
     if not session:
         raise HTTPException(status_code=404, detail="AI SDR call session not found")
+    return {"status": "ok"}
+
+
+@router.api_route("/calls/twilio/manual-bridge", methods=["GET", "POST"])
+async def twilio_manual_bridge_response(call_id: str, request: Request) -> Response:
+    body = await request.body()
+    _validate_twilio_request(request, body)
+    try:
+        twiml = default_calling_orchestrator.build_manual_bridge_response(call_id)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return Response(twiml, media_type="application/xml")
+
+
+@router.post("/calls/twilio/manual-bridge/status")
+async def twilio_manual_bridge_status(call_id: str, request: Request) -> dict[str, str]:
+    body = await request.body()
+    _validate_twilio_request(request, body)
+    payload = _request_payload(request, body)
+    default_calling_orchestrator.handle_manual_bridge_status(call_id, payload)
     return {"status": "ok"}
 
 

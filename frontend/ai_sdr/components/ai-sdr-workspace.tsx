@@ -34,6 +34,7 @@ import {
   exportAISDRContacts,
   getAISDRDashboard,
   startAISDRCustomTargetCall,
+  startAISDRManualBridgeCall,
 } from "../api";
 import type { AISDRContact, AISDRDashboard, AISDRDashboardParams } from "../types";
 import { Badge } from "@/components/ui/badge";
@@ -500,7 +501,11 @@ export function AISDRWorkspace() {
                 <Badge variant="outline">Custom Objective</Badge>
               </div>
               <div className="flex flex-wrap justify-end gap-2">
-                <ManualCallButton phone={customCall.phone} label="Manual Call" />
+                <ManualCallButton
+                  phone={customCall.phone}
+                  businessName={customCall.business_name}
+                  label="Manual Call"
+                />
                 <Button type="submit" variant="outline" disabled={customCallSubmitting}>
                   <Bot data-icon="inline-start" />
                   {customCallSubmitting ? "Starting AI Call" : "Start AI Call"}
@@ -644,7 +649,12 @@ export function AISDRWorkspace() {
                         <Eye />
                         <span className="sr-only">View profile</span>
                       </Button>
-                      <ManualCallButton phone={contact.phone} iconOnly />
+                      <ManualCallButton
+                        phone={contact.phone}
+                        businessName={contact.company}
+                        contactId={contact.id}
+                        iconOnly
+                      />
                       <Button variant="ghost" size="icon-sm" asChild>
                         <Link
                           href={`/ai-sdr/call?contactId=${contact.id}`}
@@ -739,17 +749,44 @@ function FilterSelect({
 
 function ManualCallButton({
   phone,
+  businessName = "",
+  contactId = "",
   label = "Manual Call",
   iconOnly = false,
 }: {
   phone: string;
+  businessName?: string;
+  contactId?: string;
   label?: string;
   iconOnly?: boolean;
 }) {
-  const href = manualCallHref(phone);
-  const title = href ? "Manual call from your device. AI will not speak." : "No phone number available";
+  const [submitting, setSubmitting] = useState(false);
+  const canCall = hasCallableNumber(phone);
+  const title = canCall
+    ? "Manual SDR call through Twilio. AI will not speak."
+    : "No phone number available";
 
-  if (!href) {
+  async function startManualCall() {
+    if (!canCall || submitting) return;
+    const ownerPhone = getOwnerPhoneForManualCall();
+    if (!ownerPhone) return;
+    setSubmitting(true);
+    try {
+      await startAISDRManualBridgeCall({
+        contact_id: contactId,
+        to_phone: contactId ? undefined : phone,
+        business_name: businessName,
+        owner_phone: ownerPhone,
+      });
+      toast.success("Manual SDR call started. Answer your phone to connect to the business.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Manual SDR call could not start");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (!canCall) {
     return (
       <Button variant={iconOnly ? "ghost" : "default"} size={iconOnly ? "icon-sm" : "default"} disabled title={title}>
         <Phone data-icon={iconOnly ? undefined : "inline-start"} />
@@ -759,24 +796,36 @@ function ManualCallButton({
   }
 
   return (
-    <Button variant={iconOnly ? "ghost" : "default"} size={iconOnly ? "icon-sm" : "default"} asChild>
-      <a
-        href={href}
-        title={title}
-        onClick={() => toast.info("Manual call opened. The AI agent will not speak.")}
-      >
-        <Phone data-icon={iconOnly ? undefined : "inline-start"} />
-        {iconOnly ? <span className="sr-only">{label}</span> : label}
-      </a>
+    <Button
+      variant={iconOnly ? "ghost" : "default"}
+      size={iconOnly ? "icon-sm" : "default"}
+      onClick={startManualCall}
+      disabled={submitting}
+      title={title}
+    >
+      <Phone data-icon={iconOnly ? undefined : "inline-start"} />
+      {iconOnly ? <span className="sr-only">{label}</span> : submitting ? "Calling You" : label}
     </Button>
   );
 }
 
-function manualCallHref(phone: string) {
+function hasCallableNumber(phone: string) {
   const normalized = phone.trim().replace(/[^\d+]/g, "");
   const digitCount = normalized.replace(/\D/g, "").length;
-  if (digitCount < 5) return "";
-  return `tel:${normalized}`;
+  return digitCount >= 5;
+}
+
+function getOwnerPhoneForManualCall() {
+  const storageKey = "leadforge_manual_sdr_owner_phone";
+  const saved = window.localStorage.getItem(storageKey) || "";
+  const entered = window.prompt(
+    "Enter your phone number. Twilio will call you first, then connect you to the business.",
+    saved,
+  );
+  const normalized = (entered || "").trim().replace(/[^\d+]/g, "");
+  if (!normalized) return "";
+  window.localStorage.setItem(storageKey, normalized);
+  return normalized;
 }
 
 function ContactProfileSheet({
@@ -840,7 +889,12 @@ function ContactProfileSheet({
               </div>
             </div>
             <SheetFooter>
-              <ManualCallButton phone={contact.phone} label="Manual Call" />
+              <ManualCallButton
+                phone={contact.phone}
+                businessName={contact.company}
+                contactId={contact.id}
+                label="Manual Call"
+              />
               <Button variant="outline" asChild>
                 <Link href={`/ai-sdr/call?contactId=${contact.id}`} scroll={false}>
                   <Bot data-icon="inline-start" />
