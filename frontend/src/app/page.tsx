@@ -6,7 +6,6 @@ import {
   BrainCircuit,
   Building2,
   CheckCircle2,
-  Database,
   FileText,
   Globe2,
   Mail,
@@ -139,19 +138,6 @@ const modules = [
   },
 ] satisfies Array<InfoCardItem & { href: string }>;
 
-const infrastructure = [
-  "Next.js frontend",
-  "FastAPI backend",
-  "PostgreSQL",
-  "Docker",
-  "Railway",
-  "Gmail",
-  "Google Sheets",
-  "Apify",
-  "Twilio",
-  "Gemini",
-];
-
 export default function DashboardHome() {
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
@@ -260,7 +246,7 @@ export default function DashboardHome() {
         </Card>
       </section>
 
-      <section className="grid gap-5 xl:grid-cols-[1.25fr_0.75fr]">
+      <section>
         <Card className="glass-panel">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -289,30 +275,6 @@ export default function DashboardHome() {
                 </div>
               </Link>
             ))}
-          </CardContent>
-        </Card>
-
-        <Card className="glass-panel">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Database className="size-5 text-primary" />
-              Integrations & Runtime
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {infrastructure.map((item) => (
-                <span key={item} className="rounded-lg border border-border/70 bg-secondary/30 px-3 py-2 text-sm text-muted-foreground">
-                  {item}
-                </span>
-              ))}
-            </div>
-            <div className="mt-5 rounded-lg border border-border/70 bg-secondary/30 p-4">
-              <p className="text-sm font-medium">Production note</p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Railway should deploy the root Dockerfile. In the combined container, the frontend is exported as static files and served by FastAPI, so API calls stay on the same origin.
-              </p>
-            </div>
           </CardContent>
         </Card>
       </section>
