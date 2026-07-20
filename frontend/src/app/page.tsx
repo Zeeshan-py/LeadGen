@@ -5,11 +5,14 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowUpRight,
+  BriefcaseBusiness,
   Bot,
   CalendarClock,
   CheckCircle2,
   Clock3,
+  Database,
   Flame,
+  Globe2,
   Mail,
   Megaphone,
   PhoneCall,
@@ -20,8 +23,10 @@ import {
   Sparkles,
   Target,
   Users,
+  Workflow,
   Zap,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useReducedMotion } from "framer-motion";
 
 import { PipelineProgress } from "@/components/pipeline-progress";
@@ -49,6 +54,47 @@ import { cn } from "@/lib/utils";
 
 const dailyGoal = 50;
 const weeklyGoal = 250;
+
+const productFeatures = [
+  {
+    title: "Market discovery",
+    detail: "Finds businesses by country, city, and niche, then stores usable company and contact records.",
+    icon: Globe2,
+  },
+  {
+    title: "Website intelligence",
+    detail: "Reviews each website for contact data, service gaps, social links, and opportunity signals.",
+    icon: Sparkles,
+  },
+  {
+    title: "Outreach engine",
+    detail: "Creates cold emails, follow-ups, Gmail status tracking, and reply detection from one queue.",
+    icon: Mail,
+  },
+  {
+    title: "AI SDR workflow",
+    detail: "Supports AI-assisted call preparation, manual bridge calls, and call activity monitoring.",
+    icon: PhoneCall,
+  },
+  {
+    title: "CRM pipeline",
+    detail: "Moves leads through qualification, outreach, meetings, won deals, and lost outcomes.",
+    icon: Users,
+  },
+  {
+    title: "Reporting layer",
+    detail: "Separates daily operations from deeper funnel, campaign, email, call, and ROI analytics.",
+    icon: Database,
+  },
+] satisfies Array<{ title: string; detail: string; icon: LucideIcon }>;
+
+const workflowSteps = [
+  "Choose a market",
+  "Generate and enrich leads",
+  "Review high-intent accounts",
+  "Send outreach or start calls",
+  "Track replies, meetings, and revenue",
+];
 
 export default function DashboardHome() {
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
@@ -113,6 +159,72 @@ export default function DashboardHome() {
 
   return (
     <div className="flex flex-col gap-6">
+      <section className="rounded-lg border border-primary/20 bg-card/80 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl md:p-5">
+        <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
+          <div className="flex flex-col justify-between gap-6">
+            <div>
+              <Badge variant="outline" className="border-accent/30 bg-accent/10 text-accent">
+                Project Overview
+              </Badge>
+              <h2 className="mt-3 text-2xl font-semibold tracking-normal md:text-3xl">
+                LeadForge AI turns prospecting into an operating system.
+              </h2>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+                It helps teams discover local businesses, enrich each account, create personalized outreach, manage follow-ups, and measure pipeline quality without switching between separate tools.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <ProjectFact label="Built for" value="B2B lead generation" />
+              <ProjectFact label="Primary users" value="Founders, agencies, SDR teams" />
+              <ProjectFact label="Output" value="Qualified leads and outreach" />
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            {productFeatures.map((feature) => (
+              <ProjectFeature key={feature.title} feature={feature} />
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1fr_0.85fr]">
+        <Card className="glass-panel">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Workflow className="size-5 text-primary" />
+              What the system does
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3 md:grid-cols-5">
+              {workflowSteps.map((step, index) => (
+                <div key={step} className="rounded-lg border border-border/70 bg-secondary/30 p-3">
+                  <span className="grid size-7 place-items-center rounded-md bg-primary/10 text-xs font-semibold text-primary">
+                    {index + 1}
+                  </span>
+                  <p className="mt-3 text-sm font-medium leading-5">{step}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="glass-panel">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <BriefcaseBusiness className="size-5 text-primary" />
+              Project scope
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-3">
+            <ScopeMetric label="Data capture" value="Maps, websites, email, phone, socials" />
+            <ScopeMetric label="Execution" value="Campaigns, Gmail outreach, SDR calls" />
+            <ScopeMetric label="Management" value="CRM stages, reminders, activity history" />
+          </CardContent>
+        </Card>
+      </section>
+
       <section className="rounded-lg border border-primary/20 bg-card/80 p-4 shadow-2xl shadow-black/20 backdrop-blur-xl md:p-5">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
           <div className="max-w-3xl">
@@ -330,6 +442,41 @@ function CommandKpi({
         <span className="text-sm font-medium text-muted-foreground">{suffix}</span>
       </p>
       {progress !== undefined ? <Progress value={clamp(progress)} className="mt-3 h-1.5" /> : null}
+    </div>
+  );
+}
+
+function ProjectFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-secondary/30 p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="mt-2 text-sm font-medium leading-5">{value}</p>
+    </div>
+  );
+}
+
+function ProjectFeature({ feature }: { feature: { title: string; detail: string; icon: LucideIcon } }) {
+  const Icon = feature.icon;
+  return (
+    <div className="rounded-lg border border-border/70 bg-secondary/30 p-4">
+      <div className="flex items-start gap-3">
+        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="size-4" />
+        </div>
+        <div>
+          <p className="text-sm font-medium">{feature.title}</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">{feature.detail}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScopeMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/70 bg-secondary/30 p-3">
+      <p className="text-xs font-medium text-primary">{label}</p>
+      <p className="mt-2 text-sm leading-5 text-muted-foreground">{value}</p>
     </div>
   );
 }
