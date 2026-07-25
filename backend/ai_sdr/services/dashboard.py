@@ -31,8 +31,9 @@ QUALIFIED_STAGES = {"qualified", "email_generated", "email_sent", "opened", "rep
 
 
 class AISDRDashboardService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, user_id: str) -> None:
         self.db = db
+        self.user_id = user_id
 
     def dashboard(
         self,
@@ -86,6 +87,7 @@ class AISDRDashboardService:
             self.db.scalars(
                 select(Lead)
                 .where(Lead.id.in_(unique_ids))
+                .where(Lead.user_id == self.user_id)
                 .where(self._ai_sdr_scope())
             ).all()
         )
@@ -121,6 +123,7 @@ class AISDRDashboardService:
         latest_record_id = (
             select(AISDRContactRecord.id)
             .where(AISDRContactRecord.crm_lead_id == Lead.id)
+            .where(AISDRContactRecord.user_id == self.user_id)
             .order_by(AISDRContactRecord.created_at.desc(), AISDRContactRecord.updated_at.desc())
             .limit(1)
             .correlate(Lead)
@@ -134,12 +137,18 @@ class AISDRDashboardService:
                 isouter=True,
             )
             .where(self._ai_sdr_scope())
+            .where(Lead.user_id == self.user_id)
         )
 
     def _ai_sdr_scope(self) -> Any:
         return or_(
             Lead.source == "ai_sdr",
-            Lead.id.in_(select(AISDRContactRecord.crm_lead_id).where(AISDRContactRecord.crm_lead_id.is_not(None))),
+            Lead.id.in_(
+                select(AISDRContactRecord.crm_lead_id).where(
+                    AISDRContactRecord.user_id == self.user_id,
+                    AISDRContactRecord.crm_lead_id.is_not(None),
+                )
+            ),
         )
 
     def _filters(
@@ -151,7 +160,7 @@ class AISDRDashboardService:
         source: str,
         search: str,
     ) -> list[Any]:
-        filters: list[Any] = [self._ai_sdr_scope()]
+        filters: list[Any] = [Lead.user_id == self.user_id, self._ai_sdr_scope()]
         if status:
             filters.append(Lead.lead_status == status)
         else:
@@ -165,7 +174,10 @@ class AISDRDashboardService:
                 or_(
                     Lead.source == source,
                     Lead.id.in_(
-                        select(AISDRContactRecord.crm_lead_id).where(AISDRContactRecord.source_type == source)
+                        select(AISDRContactRecord.crm_lead_id).where(
+                            AISDRContactRecord.user_id == self.user_id,
+                            AISDRContactRecord.source_type == source,
+                        )
                     ),
                 )
             )
@@ -187,6 +199,7 @@ class AISDRDashboardService:
         leads = list(
             self.db.scalars(
                 select(Lead)
+                .where(Lead.user_id == self.user_id)
                 .where(self._ai_sdr_scope())
                 .where(Lead.lead_status != "archived")
             ).all()
@@ -212,6 +225,7 @@ class AISDRDashboardService:
         leads = list(
             self.db.scalars(
                 select(Lead)
+                .where(Lead.user_id == self.user_id)
                 .where(self._ai_sdr_scope())
                 .where(Lead.lead_status != "archived")
             ).all()
@@ -220,6 +234,7 @@ class AISDRDashboardService:
             str(row)
             for row in self.db.scalars(
                 select(AISDRContactRecord.source_type)
+                .where(AISDRContactRecord.user_id == self.user_id)
                 .where(AISDRContactRecord.crm_lead_id.is_not(None))
                 .distinct()
             ).all()

@@ -43,6 +43,7 @@ class LeadPipeline:
         ai: GeminiLeadAI | None,
         contact_extractor: LeadExtractor | None,
         validation: LeadValidationService,
+        user_id: str,
     ) -> None:
         evidence = ContactEvidenceRecorder()
         self.settings = settings
@@ -50,7 +51,7 @@ class LeadPipeline:
         self.social_enrichment = SocialEnrichmentService(evidence)
         self.analysis = LeadAnalysisService(ai, contact_extractor)
         self.validation = validation
-        self.persistence = LeadPersistenceService(db)
+        self.persistence = LeadPersistenceService(db, user_id)
 
     def process(
         self,

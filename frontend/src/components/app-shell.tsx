@@ -17,6 +17,7 @@ import {
   Gauge,
   Home,
   Layers3,
+  LogOut,
   Mail,
   Settings,
   Sparkles,
@@ -40,10 +41,12 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 const nav = [
-  { href: "/", label: "Dashboard", icon: Home },
+  { href: "/dashboard", label: "Dashboard", icon: Home },
   { href: "/lead-generator", label: "Lead Generator", icon: Sparkles },
   { href: "/ai-sdr", label: "AI SDR", icon: Bot },
   { href: "/leads", label: "Leads", icon: Users },
@@ -56,6 +59,7 @@ const nav = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user, logout } = useAuth();
   const normalizedPath = pathname === "/" ? pathname : pathname.replace(/\/+$/, "");
   const current = nav.find((item) => item.href === normalizedPath) ?? nav[0];
 
@@ -69,7 +73,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">LeadForge AI</p>
-              <p className="truncate text-xs text-sidebar-foreground/60">Internal command center</p>
+              <p className="truncate text-xs text-sidebar-foreground/60">Private workspace</p>
             </div>
           </div>
         </SidebarHeader>
@@ -103,7 +107,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <span className="text-xs font-medium">Automation ready</span>
             </div>
             <p className="mt-2 text-xs leading-5 text-sidebar-foreground/60">
-              Apify, Gemini, Gmail, Sheets, and Postgres work from one console.
+              Leads, outreach, CRM, and SDR workflows stay scoped to this account.
             </p>
           </div>
         </SidebarFooter>
@@ -119,12 +123,23 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="outline" className="hidden border-primary/30 bg-primary/10 text-primary sm:inline-flex">
-              Live pipeline
+              {user?.is_admin ? "Admin" : "Private"}
             </Badge>
             <div className="hidden items-center gap-2 rounded-lg border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground md:flex">
               <Gauge className="size-4 text-accent" />
-              Single-user internal system
+              <span className="max-w-44 truncate">{user?.email}</span>
             </div>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Log out"
+              title="Log out"
+              onClick={() => {
+                logout();
+              }}
+            >
+              <LogOut />
+            </Button>
           </div>
         </header>
         <motion.main

@@ -9,6 +9,7 @@ from urllib.parse import parse_qsl
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket
 from fastapi.responses import Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ai_sdr.calling import default_calling_orchestrator
@@ -44,7 +45,9 @@ from ai_sdr.schemas import (
 from ai_sdr.services.dashboard import AISDRDashboardService
 from ai_sdr.services.ingestion import AISDRIngestionService
 from ai_sdr.services.sources import supported_sources
+from app.auth import get_current_user
 from app.database import get_db
+from app.models import Lead, User
 
 settings = get_ai_sdr_settings()
 router = APIRouter(prefix=settings.api_prefix, tags=["ai-sdr"])
@@ -69,8 +72,10 @@ def get_conversation_states() -> list[str]:
 async def start_outbound_call(
     payload: AISDRCallStart,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     try:
+        _require_user_contact(db, payload.contact_id, current_user.id)
         session = await default_calling_orchestrator.start_outbound_call(
             db,
             contact_id=payload.contact_id,
@@ -90,8 +95,11 @@ async def start_outbound_call(
 async def start_manual_bridge_call(
     payload: AISDRManualBridgeCallStart,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     try:
+        if payload.contact_id:
+            _require_user_contact(db, payload.contact_id, current_user.id)
         return await default_calling_orchestrator.start_manual_bridge_call(
             db,
             contact_id=payload.contact_id,
@@ -112,6 +120,7 @@ async def start_manual_bridge_call(
 async def start_custom_target_call(
     payload: AISDRCustomCallTarget,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     actor = payload.actor.strip() or settings.default_actor
     objective = _custom_target_objective(payload)
@@ -126,7 +135,7 @@ async def start_custom_target_call(
         if part
     )
     try:
-        imported = AISDRIngestionService(db).ingest_contacts(
+        imported = AISDRIngestionService(db, current_user.id).ingest_contacts(
             AISDRImportCreate(
                 source_type=AISDRSourceType.MANUAL_ENTRY,
                 contacts=[
@@ -166,7 +175,7 @@ async def start_custom_target_call(
             objective=objective,
             actor=actor,
         )
-        contact = AISDRDashboardService(db).get_contact(lead_id)
+        contact = AISDRDashboardService(db, current_user.id).get_contact(lead_id)
         if not contact:
             raise LookupError("AI SDR contact was stored but could not be loaded.")
     except LookupError as exc:
@@ -179,15 +188,27 @@ async def start_custom_target_call(
 
 
 @router.get("/calls", response_model=list[AISDRCallSessionRead])
-def list_calls() -> list[dict]:
-    return [session.to_dict() for session in default_calling_orchestrator.list_sessions()]
+def list_calls(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[dict]:
+    return [
+        session.to_dict()
+        for session in default_calling_orchestrator.list_sessions()
+        if _contact_belongs_to_user(db, session.contact_id, current_user.id)
+    ]
 
 
 @router.get("/calls/{call_id}", response_model=AISDRCallSessionRead)
-def get_call(call_id: str) -> dict:
+def get_call(
+    call_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
     session = default_calling_orchestrator.get_session(call_id)
     if not session:
         raise HTTPException(status_code=404, detail="AI SDR call session not found")
+    _require_user_contact(db, session.contact_id, current_user.id)
     return session.to_dict()
 
 
@@ -196,8 +217,13 @@ async def control_call(
     call_id: str,
     payload: AISDRCallControl,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     try:
+        session = default_calling_orchestrator.get_session(call_id)
+        if not session:
+            raise LookupError("AI SDR call session not found")
+        _require_user_contact(db, session.contact_id, current_user.id)
         session = await default_calling_orchestrator.control_call(
             db,
             call_id=call_id,
@@ -216,8 +242,13 @@ async def inject_call_transcript(
     call_id: str,
     payload: AISDRCallTranscriptCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     try:
+        session = default_calling_orchestrator.get_session(call_id)
+        if not session:
+            raise LookupError("AI SDR call session not found")
+        _require_user_contact(db, session.contact_id, current_user.id)
         session = await default_calling_orchestrator.inject_transcript(
             db,
             call_id=call_id,
@@ -235,8 +266,13 @@ async def complete_call(
     call_id: str,
     payload: AISDRCallControl | None = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     try:
+        session = default_calling_orchestrator.get_session(call_id)
+        if not session:
+            raise LookupError("AI SDR call session not found")
+        _require_user_contact(db, session.contact_id, current_user.id)
         session = await default_calling_orchestrator.complete_call(
             db,
             call_id=call_id,
@@ -307,8 +343,10 @@ async def twilio_media_stream(websocket: WebSocket) -> None:
 def start_conversation(
     payload: AISDRConversationStart,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> dict:
     if payload.contact_id:
+        _require_user_contact(db, payload.contact_id, current_user.id)
         response = default_conversation_manager.start_for_contact(db, payload.contact_id)
         if not response:
             raise HTTPException(status_code=404, detail="AI SDR contact not found")
@@ -322,15 +360,31 @@ def start_conversation(
 
 
 @router.get("/conversations/{session_id}", response_model=AISDRConversationResponse)
-def get_conversation(session_id: str) -> dict:
+def get_conversation(
+    session_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
     response = default_conversation_manager.get_session(session_id)
     if not response:
         raise HTTPException(status_code=404, detail="AI SDR conversation session not found")
+    if response.get("contact_id"):
+        _require_user_contact(db, str(response["contact_id"]), current_user.id)
     return response
 
 
 @router.post("/conversations/{session_id}/turn", response_model=AISDRConversationResponse)
-def add_conversation_turn(session_id: str, payload: AISDRConversationTurn) -> dict:
+def add_conversation_turn(
+    session_id: str,
+    payload: AISDRConversationTurn,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    existing = default_conversation_manager.get_session(session_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="AI SDR conversation session not found")
+    if existing.get("contact_id"):
+        _require_user_contact(db, str(existing["contact_id"]), current_user.id)
     response = default_conversation_manager.receive_customer_message(session_id, payload.message)
     if not response:
         raise HTTPException(status_code=404, detail="AI SDR conversation session not found")
@@ -340,6 +394,7 @@ def add_conversation_turn(session_id: str, payload: AISDRConversationTurn) -> di
 @router.get("/dashboard", response_model=AISDRDashboardResponse)
 def get_dashboard(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     status: str = "",
     industry: str = "",
     city: str = "",
@@ -348,7 +403,7 @@ def get_dashboard(
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> AISDRDashboardResponse:
-    return AISDRDashboardService(db).dashboard(
+    return AISDRDashboardService(db, current_user.id).dashboard(
         status=status,
         industry=industry,
         city=city,
@@ -360,8 +415,12 @@ def get_dashboard(
 
 
 @router.get("/contacts/{contact_id}", response_model=AISDRContactSummary)
-def get_contact(contact_id: str, db: Session = Depends(get_db)) -> AISDRContactSummary:
-    contact = AISDRDashboardService(db).get_contact(contact_id)
+def get_contact(
+    contact_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AISDRContactSummary:
+    contact = AISDRDashboardService(db, current_user.id).get_contact(contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="AI SDR contact not found")
     return contact
@@ -371,8 +430,9 @@ def get_contact(contact_id: str, db: Session = Depends(get_db)) -> AISDRContactS
 def bulk_delete_contacts(
     payload: AISDRBulkContactAction,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> AISDRBulkActionResult:
-    return AISDRDashboardService(db).archive_contacts(
+    return AISDRDashboardService(db, current_user.id).archive_contacts(
         payload.contact_ids,
         actor=payload.actor.strip() or settings.default_actor,
     )
@@ -382,8 +442,9 @@ def bulk_delete_contacts(
 def export_contacts(
     payload: AISDRBulkContactAction | None = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> Response:
-    dashboard = AISDRDashboardService(db).dashboard(limit=500)
+    dashboard = AISDRDashboardService(db, current_user.id).dashboard(limit=500)
     selected_ids = set(payload.contact_ids) if payload else set()
     contacts = [
         contact
@@ -431,19 +492,24 @@ def export_contacts(
 
 
 @router.post("/imports", response_model=AISDRImportResponse)
-def create_import(payload: AISDRImportCreate, db: Session = Depends(get_db)) -> AISDRImportResponse:
-    return _ingest(payload, db)
+def create_import(
+    payload: AISDRImportCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AISDRImportResponse:
+    return _ingest(payload, db, current_user)
 
 
 @router.get("/imports", response_model=list[AISDRBatchRead])
 def list_imports(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     source_type: AISDRSourceType | None = None,
     status: AISDRImportStatus | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> list[AISDRBatchRead]:
-    return AISDRIngestionService(db).list_batches(
+    return AISDRIngestionService(db, current_user.id).list_batches(
         source_type=source_type,
         status=status,
         limit=limit,
@@ -452,8 +518,12 @@ def list_imports(
 
 
 @router.get("/imports/{batch_id}", response_model=AISDRImportDetail)
-def get_import(batch_id: str, db: Session = Depends(get_db)) -> AISDRImportDetail:
-    batch = AISDRIngestionService(db).get_batch(batch_id)
+def get_import(
+    batch_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> AISDRImportDetail:
+    batch = AISDRIngestionService(db, current_user.id).get_batch(batch_id)
     if not batch:
         raise HTTPException(status_code=404, detail="AI SDR import batch not found")
     return batch
@@ -463,6 +533,7 @@ def get_import(batch_id: str, db: Session = Depends(get_db)) -> AISDRImportDetai
 def create_manual_contact(
     payload: AISDRManualContactCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> AISDRImportResponse:
     return _ingest(
         AISDRImportCreate(
@@ -472,6 +543,7 @@ def create_manual_contact(
             created_by=payload.created_by,
         ),
         db,
+        current_user,
     )
 
 
@@ -479,6 +551,7 @@ def create_manual_contact(
 def create_rest_contacts(
     payload: AISDRRestContactsCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> AISDRImportResponse:
     return _ingest(
         AISDRImportCreate(
@@ -488,16 +561,40 @@ def create_rest_contacts(
             created_by=payload.created_by,
         ),
         db,
+        current_user,
     )
 
 
-def _ingest(payload: AISDRImportCreate, db: Session) -> AISDRImportResponse:
+def _ingest(payload: AISDRImportCreate, db: Session, current_user: User) -> AISDRImportResponse:
     try:
-        return AISDRIngestionService(db).ingest_contacts(payload)
+        return AISDRIngestionService(db, current_user.id).ingest_contacts(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+def _contact_belongs_to_user(db: Session, contact_id: str, user_id: str) -> bool:
+    if not contact_id:
+        return False
+    return bool(
+        db.scalar(
+            select(Lead.id)
+            .where(Lead.id == contact_id, Lead.user_id == user_id)
+            .limit(1)
+        )
+    )
+
+
+def _require_user_contact(db: Session, contact_id: str, user_id: str) -> Lead:
+    lead = db.scalar(
+        select(Lead)
+        .where(Lead.id == contact_id, Lead.user_id == user_id)
+        .limit(1)
+    )
+    if not lead:
+        raise HTTPException(status_code=404, detail="AI SDR contact not found")
+    return lead
 
 
 def _custom_target_objective(payload: AISDRCustomCallTarget) -> str:

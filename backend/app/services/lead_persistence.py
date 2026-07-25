@@ -24,8 +24,9 @@ logger = logging.getLogger(__name__)
 
 
 class LeadPersistenceService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, user_id: str) -> None:
         self.db = db
+        self.user_id = user_id
 
     def save(
         self,
@@ -38,7 +39,7 @@ class LeadPersistenceService:
         social_pages: list[str],
     ) -> Lead:
         is_new = self.db.scalar(
-            select(Lead.id).where(Lead.dedupe_key == lead.dedupe_key())
+            select(Lead.id).where(Lead.user_id == self.user_id, Lead.dedupe_key == lead.dedupe_key())
         ) is None
         db_lead = self._upsert_lead(
             lead,
@@ -112,11 +113,15 @@ class LeadPersistenceService:
         screenshot_url: str,
         social_pages: list[str],
     ) -> Lead:
-        existing = self.db.scalar(select(Lead).where(Lead.dedupe_key == lead.dedupe_key()))
+        existing = self.db.scalar(
+            select(Lead).where(Lead.user_id == self.user_id, Lead.dedupe_key == lead.dedupe_key())
+        )
         row = existing or Lead(
+            user_id=self.user_id,
             dedupe_key=lead.dedupe_key(),
             business_name=lead.business_name,
         )
+        row.user_id = self.user_id
         row.campaign_id = campaign.id
         row.business_name = lead.business_name
         row.contact_name = lead.owner_or_contact
@@ -174,8 +179,11 @@ class LeadPersistenceService:
         campaign: Campaign,
         drafts: OutreachDrafts,
     ) -> Outreach:
-        existing = self.db.scalar(select(Outreach).where(Outreach.lead_id == lead.id))
+        existing = self.db.scalar(
+            select(Outreach).where(Outreach.user_id == self.user_id, Outreach.lead_id == lead.id)
+        )
         row = existing or Outreach(
+            user_id=self.user_id,
             lead_id=lead.id,
             campaign_id=campaign.id,
             tracking_id=uuid.uuid4().hex,

@@ -42,6 +42,7 @@ def sync_replied_outreach(
     db: Session,
     settings: Settings,
     *,
+    user_id: str,
     raise_on_missing_credentials: bool = True,
     lead_id: str | None = None,
 ) -> ReplySyncResult:
@@ -49,6 +50,7 @@ def sync_replied_outreach(
     query = (
         select(Outreach)
         .options(joinedload(Outreach.lead), joinedload(Outreach.campaign))
+        .where(Outreach.user_id == user_id)
         .where(Outreach.status.in_(ACTIVE_OUTREACH_STATUSES))
     )
     if lead_id:
@@ -57,7 +59,7 @@ def sync_replied_outreach(
     if not rows and not raise_on_missing_credentials:
         return result
 
-    effective = effective_settings(settings, db)
+    effective = effective_settings(settings, db, user_id)
     try:
         effective.require_gmail_credentials()
     except RuntimeError:
@@ -95,7 +97,8 @@ def sync_replied_outreach(
         for message in thread_messages:
             existing = db.scalar(
                 select(EmailMessage).where(
-                    EmailMessage.gmail_message_id == message.gmail_message_id
+                    EmailMessage.user_id == user_id,
+                    EmailMessage.gmail_message_id == message.gmail_message_id,
                 )
             )
             if existing:
@@ -103,6 +106,7 @@ def sync_replied_outreach(
             direction = "sent" if message.from_email == sender_email else "received"
             db.add(
                 EmailMessage(
+                    user_id=user_id,
                     lead_id=outreach.lead_id,
                     outreach_id=outreach.id,
                     gmail_message_id=message.gmail_message_id,
@@ -144,6 +148,7 @@ def sync_replied_outreach(
             outreach.campaign.replies += 1
         db.add(
             Analytics(
+                user_id=user_id,
                 event_type="email_replied",
                 lead_id=outreach.lead_id,
                 campaign_id=outreach.campaign_id,
@@ -180,6 +185,7 @@ def sync_replied_outreach(
                 result.closed += 1
                 db.add(
                     EmailMessage(
+                        user_id=user_id,
                         lead_id=outreach.lead_id,
                         outreach_id=outreach.id,
                         gmail_message_id=sent_reply.message_id,
@@ -195,6 +201,7 @@ def sync_replied_outreach(
                 )
                 db.add(
                     Analytics(
+                        user_id=user_id,
                         event_type="auto_reply_sent",
                         lead_id=outreach.lead_id,
                         campaign_id=outreach.campaign_id,
@@ -212,6 +219,7 @@ def sync_replied_outreach(
                 )
                 db.add(
                     Analytics(
+                        user_id=user_id,
                         event_type="client_closed",
                         lead_id=outreach.lead_id,
                         campaign_id=outreach.campaign_id,

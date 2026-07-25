@@ -47,7 +47,7 @@ The current modular monolith can be deployed quickly. Its boundaries support fut
 
 LeadForge becomes an AI revenue operating system with:
 
-- Multi-tenant SaaS accounts.
+- Private SaaS accounts.
 - Voice AI SDR.
 - Calendar booking.
 - Billing.

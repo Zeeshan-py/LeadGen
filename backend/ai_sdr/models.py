@@ -37,6 +37,7 @@ class AISDRContactBatch(Base, AISDRTimestampMixin):
     )
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     source_type: Mapped[str] = mapped_column(String(80), index=True)
     status: Mapped[str] = mapped_column(String(40), default="queued", index=True)
     total_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -61,6 +62,7 @@ class AISDRContactRecord(Base, AISDRTimestampMixin):
     )
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     batch_id: Mapped[str] = mapped_column(
         ForeignKey("ai_sdr_contact_batches.id", ondelete="CASCADE"),
         index=True,

@@ -61,7 +61,7 @@ export default function LeadGeneratorPage() {
   const connectToJob = useCallback(
     (jobId: string) => {
       closeStream();
-      const source = new EventSource(generationEventsUrl(jobId));
+      const source = new EventSource(generationEventsUrl(jobId), { withCredentials: true });
       sourceRef.current = source;
       setRunning(true);
 

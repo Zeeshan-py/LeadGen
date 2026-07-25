@@ -1,6 +1,6 @@
 # Environment Variables
 
-Environment variables are the deployment defaults. Some values can be overridden at runtime through the Settings page and stored in the `settings` table.
+Environment variables are the deployment defaults. Some integration values can be overridden per account through the Settings page and stored in the `settings` table with that user's `user_id`.
 
 ## Core Deployment
 
@@ -17,8 +17,27 @@ Environment variables are the deployment defaults. Some values can be overridden
 | `DATABASE_POOL_SIZE` | SQLAlchemy pool size. | `5` | No | Tune for DB limits. |
 | `DATABASE_MAX_OVERFLOW` | SQLAlchemy overflow connections. | `10` | No | Tune for DB limits. |
 | `FORWARDED_ALLOW_IPS` | Trusted proxy IPs. | `127.0.0.1` | Production | Avoid `*` unless controlled. |
-| `BASIC_AUTH_USERNAME` | Production Basic Auth username. | empty | Production | Secret. |
-| `BASIC_AUTH_PASSWORD` | Production Basic Auth password. | empty | Production | Secret. |
+
+## Authentication
+
+| Variable | Purpose | Default | Required | Security Notes |
+|---|---|---|---|---|
+| `JWT_SECRET_KEY` | Signs JWT access tokens. | empty | Production | Secret; use a long random value. |
+| `JWT_ISSUER` | JWT issuer claim. | `leadforge` | No | Keep stable between deploys. |
+| `ACCESS_TOKEN_MINUTES` | Access-token lifetime. | `15` | No | Shorter limits reduce replay window. |
+| `REFRESH_TOKEN_DAYS` | Remember-me refresh lifetime. | `30` | No | Refresh tokens are hashed in DB. |
+| `SESSION_REFRESH_TOKEN_DAYS` | Non-remembered refresh lifetime. | `1` | No | Use for browser-session style logins. |
+| `PASSWORD_RESET_TOKEN_MINUTES` | Reset token lifetime. | `30` | No | Reset tokens are hashed in DB. |
+| `AUTH_COOKIE_SECURE` | Forces Secure auth cookies. | production auto | Production HTTPS | Set `false` only for local HTTP. |
+| `AUTH_COOKIE_DOMAIN` | Optional cookie domain. | empty | Split subdomains | Leave empty for same-host deployments. |
+| `ADMIN_EMAIL` | The only admin account email. | empty | Production | Admin status is email-match only. |
+| `ADMIN_PASSWORD` | Admin email login password. | empty | Production | Secret; not stored in DB. |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth app client ID. | empty | Google login | Public OAuth client identifier. |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth app secret. | empty | Google login | Secret. |
+| `GOOGLE_OAUTH_REDIRECT_URI` | Override Google callback URL. | derived | Split hosting | Usually `PUBLIC_BACKEND_URL/auth/google/callback`. |
+| `GITHUB_OAUTH_CLIENT_ID` | GitHub OAuth app client ID. | empty | GitHub login | Public OAuth client identifier. |
+| `GITHUB_OAUTH_CLIENT_SECRET` | GitHub OAuth app secret. | empty | GitHub login | Secret. |
+| `GITHUB_OAUTH_REDIRECT_URI` | Override GitHub callback URL. | derived | Split hosting | Usually `PUBLIC_BACKEND_URL/auth/github/callback`. |
 
 ## Lead Discovery and AI
 

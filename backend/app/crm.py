@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+from .auth import get_current_user
 from .config import get_settings
 from .database import get_db
 from .email_sync import sync_replied_outreach
@@ -26,6 +27,7 @@ from .models import (
     LeadNote,
     LeadTag,
     Outreach,
+    User,
 )
 from .schemas import (
     CrmActivityRead,
@@ -67,23 +69,31 @@ LEAD_DETAIL_OPTIONS = (
 
 
 @router.get("/users", response_model=list[CrmUserRead])
-def get_crm_users(db: Session = Depends(get_db)) -> list[CrmUser]:
+def get_crm_users(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> list[CrmUser]:
     return list(
         db.scalars(
             select(CrmUser)
-            .where(CrmUser.is_active.is_(True))
+            .where(CrmUser.user_id == current_user.id, CrmUser.is_active.is_(True))
             .order_by(CrmUser.name)
         ).all()
     )
 
 
 @router.post("/users", response_model=CrmUserRead)
-def create_crm_user(payload: CrmUserCreate, db: Session = Depends(get_db)) -> CrmUser:
+def create_crm_user(
+    payload: CrmUserCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CrmUser:
     email = payload.email.strip().lower()
-    if email and db.scalar(select(CrmUser).where(CrmUser.email == email)):
+    if email and db.scalar(select(CrmUser).where(CrmUser.user_id == current_user.id, CrmUser.email == email)):
         raise HTTPException(status_code=409, detail="A CRM user with this email already exists")
     initials = payload.initials.strip().upper() or _initials(payload.name)
     user = CrmUser(
+        user_id=current_user.id,
         name=payload.name.strip(),
         email=email,
         initials=initials,
@@ -97,6 +107,7 @@ def create_crm_user(payload: CrmUserCreate, db: Session = Depends(get_db)) -> Cr
 @router.get("/leads", response_model=CrmLeadListResponse)
 def get_crm_leads(
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     search: str = "",
     stage: str = "",
     country: str = "",
@@ -112,6 +123,7 @@ def get_crm_leads(
     if stage and stage not in CRM_STAGES:
         raise HTTPException(status_code=400, detail="Unsupported CRM stage")
     filters = _lead_filters(
+        user_id=current_user.id,
         search=search,
         country=country,
         industry=industry,
@@ -151,8 +163,12 @@ def get_crm_leads(
 
 
 @router.get("/leads/{lead_id}", response_model=CrmLeadDetail)
-def get_crm_lead(lead_id: str, db: Session = Depends(get_db)) -> CrmLeadDetail:
-    return _lead_detail(_get_lead(db, lead_id))
+def get_crm_lead(
+    lead_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CrmLeadDetail:
+    return _lead_detail(_get_lead(db, lead_id, current_user.id))
 
 
 @router.patch("/leads/{lead_id}", response_model=CrmLeadDetail)
@@ -160,14 +176,17 @@ def update_crm_lead(
     lead_id: str,
     payload: CrmLeadUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> CrmLeadDetail:
-    lead = _get_lead(db, lead_id)
+    lead = _get_lead(db, lead_id, current_user.id)
     changes = payload.model_dump(exclude_unset=True)
     stage = changes.pop("crm_stage", None)
     address = changes.pop("address", None)
     industry = changes.pop("industry", None)
     assigned_user_id = changes.get("assigned_user_id", lead.assigned_user_id)
-    if assigned_user_id and not db.get(CrmUser, assigned_user_id):
+    if assigned_user_id and not db.scalar(
+        select(CrmUser).where(CrmUser.id == assigned_user_id, CrmUser.user_id == current_user.id)
+    ):
         raise HTTPException(status_code=400, detail="Assigned CRM user does not exist")
 
     changed_fields: list[str] = []
@@ -211,7 +230,7 @@ def update_crm_lead(
             metadata={"fields": other_fields},
         )
     db.commit()
-    return _lead_detail(_get_lead(db, lead_id))
+    return _lead_detail(_get_lead(db, lead_id, current_user.id))
 
 
 @router.post("/leads/{lead_id}/notes", response_model=CrmLeadDetail)
@@ -219,9 +238,11 @@ def add_crm_note(
     lead_id: str,
     payload: CrmNoteCreate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> CrmLeadDetail:
-    lead = _get_lead(db, lead_id)
+    lead = _get_lead(db, lead_id, current_user.id)
     note = LeadNote(
+        user_id=current_user.id,
         lead_id=lead.id,
         body=payload.body.strip(),
         created_by=payload.created_by.strip() or "LeadForge user",
@@ -237,7 +258,7 @@ def add_crm_note(
         actor=note.created_by,
     )
     db.commit()
-    return _lead_detail(_get_lead(db, lead_id))
+    return _lead_detail(_get_lead(db, lead_id, current_user.id))
 
 
 @router.put("/leads/{lead_id}/tags", response_model=CrmLeadDetail)
@@ -245,25 +266,28 @@ def update_crm_tags(
     lead_id: str,
     payload: CrmTagsUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> CrmLeadDetail:
-    lead = _get_lead(db, lead_id)
+    lead = _get_lead(db, lead_id, current_user.id)
     replace_lead_tags(db, lead, payload.tags)
     db.commit()
-    return _lead_detail(_get_lead(db, lead_id))
+    return _lead_detail(_get_lead(db, lead_id, current_user.id))
 
 
 @router.post("/leads/{lead_id}/sync-gmail", response_model=CrmLeadDetail)
 def sync_crm_gmail_thread(
     lead_id: str,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ) -> CrmLeadDetail:
-    _get_lead(db, lead_id)
-    sync_replied_outreach(db, settings, lead_id=lead_id)
-    return _lead_detail(_get_lead(db, lead_id))
+    _get_lead(db, lead_id, current_user.id)
+    sync_replied_outreach(db, settings, lead_id=lead_id, user_id=current_user.id)
+    return _lead_detail(_get_lead(db, lead_id, current_user.id))
 
 
 def _lead_filters(
     *,
+    user_id: str,
     search: str,
     country: str,
     industry: str,
@@ -273,7 +297,7 @@ def _lead_filters(
     last_contacted_from: datetime | None,
     last_contacted_to: datetime | None,
 ) -> list[Any]:
-    filters: list[Any] = []
+    filters: list[Any] = [Lead.user_id == user_id]
     if search.strip():
         like = f"%{search.strip()}%"
         filters.append(
@@ -303,11 +327,11 @@ def _lead_filters(
     return filters
 
 
-def _get_lead(db: Session, lead_id: str) -> Lead:
+def _get_lead(db: Session, lead_id: str, user_id: str) -> Lead:
     lead = db.scalar(
         select(Lead)
         .options(*LEAD_DETAIL_OPTIONS)
-        .where(Lead.id == lead_id)
+        .where(Lead.id == lead_id, Lead.user_id == user_id)
         .execution_options(populate_existing=True)
     )
     if not lead:

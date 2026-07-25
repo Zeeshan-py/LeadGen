@@ -7,7 +7,7 @@
   <em>Replace this text with the final product logo or wordmark before public launch.</em>
 </p>
 
-LeadForge AI Platform is a full-stack SaaS system that turns local-market discovery into an actionable sales pipeline. It combines automated lead discovery, AI website analysis, CRM operations, Gmail outreach, analytics, and an independent AI SDR module with production AI calling and a conversation engine.
+LeadForge AI Platform is a full-stack SaaS system that turns local-market discovery into an actionable sales pipeline. It combines automated lead discovery, AI website analysis, CRM operations, Gmail outreach, analytics, and an independent AI SDR module with production AI calling and a conversation engine. Each registered account owns one completely private workspace; there are no organizations, teams, invitations, or shared workspaces.
 
 The platform is designed for judges, developers, investors, customers, and future contributors who need to understand not only what LeadForge does, but why the architecture exists and how the pieces fit together.
 
@@ -44,13 +44,14 @@ LeadForge is a modular monolith with clear internal boundaries:
 
 - **Frontend**: Next.js 15 App Router, React 19, TypeScript, Tailwind CSS, shadcn/ui, Recharts, Framer Motion.
 - **Backend**: FastAPI, SQLAlchemy 2, Alembic, PostgreSQL, server-sent events for generation jobs.
+- **Authentication**: JWT access cookies, persisted refresh tokens, email/password auth, Google OAuth, GitHub OAuth, password reset tokens, CSRF protection, and login rate limiting.
 - **AI**: Gemini for website analysis and outreach drafting; independent AI SDR conversation engine for future voice/chat SDR flows.
 - **Integrations**: Apify, Google Sheets, Gmail OAuth, PostgreSQL.
 - **CRM Core**: Central shared record system for all contacts, pipeline stages, notes, tags, activities, and messages.
 
 ```mermaid
 flowchart LR
-    User["User / Growth Team"] --> UI["Next.js Dashboard"]
+    User["Private Account"] --> UI["Next.js Dashboard"]
     UI --> API["FastAPI Backend"]
     API --> CRM["CRM Core<br/>leads + activities + outreach"]
     API --> LG["Lead Generator"]
@@ -78,6 +79,18 @@ flowchart LR
 - Full-screen AI Calling Workspace with Twilio, Gemini 2.5 Flash, Cartesia, live transcript streaming, AI Brain state, and mock fallback.
 - AI SDR conversation engine with memory, state machine, qualification, objections, closing, and structured events.
 - Docker-first deployment with Railway/Netlify guidance.
+
+## Authentication and Privacy
+
+LeadForge uses a simple SaaS account model:
+
+- One registered account equals one private workspace.
+- Every user-owned table includes `user_id`.
+- API queries filter by the authenticated user automatically.
+- Users cannot invite, share, join teams, or access another user workspace.
+- Admin status is assigned only when the logged-in email matches `ADMIN_EMAIL`.
+
+Supported sign-in methods are email/password, Google OAuth, and GitHub OAuth. Refresh tokens are stored server-side, auth cookies are HttpOnly, and unsafe API writes require CSRF validation.
 
 ## Modules
 
@@ -239,6 +252,14 @@ Runtime settings can also be saved through the Settings page and persisted in Po
 Key variables:
 
 - `DATABASE_URL`
+- `JWT_SECRET_KEY`
+- `ADMIN_EMAIL`
+- `ADMIN_PASSWORD`
+- `AUTH_COOKIE_SECURE`
+- `GOOGLE_OAUTH_CLIENT_ID`
+- `GOOGLE_OAUTH_CLIENT_SECRET`
+- `GITHUB_OAUTH_CLIENT_ID`
+- `GITHUB_OAUTH_CLIENT_SECRET`
 - `APIFY_API_TOKEN`
 - `GEMINI_API_KEY`
 - `GOOGLE_SHEETS_SPREADSHEET_ID`
@@ -247,8 +268,6 @@ Key variables:
 - `GMAIL_CLIENT_SECRET`
 - `GMAIL_REFRESH_TOKEN`
 - `GMAIL_SENDER_EMAIL`
-- `BASIC_AUTH_USERNAME`
-- `BASIC_AUTH_PASSWORD`
 
 See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md).
 
@@ -268,6 +287,7 @@ The container runs Alembic migrations before starting the API and serves the exp
 3. Configure environment variables from `.env.example`.
 4. Set `APP_URL`, `FRONTEND_ORIGIN`, and `PUBLIC_BACKEND_URL` to the public HTTPS URL.
 5. Store `GOOGLE_SERVICE_ACCOUNT_JSON` as a single-line JSON environment variable.
+6. Set `AUTH_COOKIE_SECURE=true` for HTTPS deployments.
 
 ## Netlify Deployment
 
@@ -281,7 +301,9 @@ LeadForge can use Netlify for a frontend-only deployment when the FastAPI backen
 ## Production Checklist
 
 - [ ] Use HTTPS-only public URLs.
-- [ ] Set strong `POSTGRES_PASSWORD`, `BASIC_AUTH_USERNAME`, and `BASIC_AUTH_PASSWORD`.
+- [ ] Set strong `POSTGRES_PASSWORD`, `JWT_SECRET_KEY`, and `ADMIN_PASSWORD`.
+- [ ] Set `ADMIN_EMAIL` to the only admin account email.
+- [ ] Configure Google/GitHub OAuth redirect URLs or leave those buttons disabled by omitting OAuth credentials.
 - [ ] Store API keys in platform secrets, never in source control.
 - [ ] Run `alembic upgrade head`.
 - [ ] Verify `GET /health/ready`.
@@ -308,8 +330,12 @@ Lead generation/
     ai_sdr/              Independent AI SDR frontend module
   database/              SQL schema reference
   docs/                  Platform documentation
+    templates/           Reusable document and skill templates
+  legacy/                Archived compatibility code kept out of runtime paths
+  local/                 Ignored local runtime output, secrets, logs, and caches
   scripts/               Development utilities
   design/                Design concepts and screenshot placeholders
+  work/                  Ignored generated document artifacts and scratch builds
 ```
 
 ## API Overview
@@ -317,6 +343,7 @@ Lead generation/
 Primary API groups:
 
 - Health: `/health`, `/health/ready`, `/health/google`
+- Auth: `/auth/signup`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/me`, `/auth/forgot-password`, `/auth/reset-password`
 - Lead generation: `/generate-leads`, `/generate-leads/{job_id}/events`
 - Leads: `/get-leads`, `/get-leads/export.csv`
 - Campaigns: `/get-campaigns`
@@ -343,7 +370,7 @@ This repository does not currently include a formal license file. Add a license 
 - External job queue and shared event bus for multi-replica scaling.
 - Persistent AI SDR conversation sessions.
 - Distributed call-session storage for multi-worker AI SDR voice deployments.
-- Role-based authentication and multi-tenant SaaS accounts.
+- Subscription plans for private accounts.
 - Billing and subscription management.
 - More import adapters for AI SDR sources.
 - Advanced analytics dashboards and forecasting.

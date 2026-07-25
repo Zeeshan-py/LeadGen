@@ -27,8 +27,9 @@ class AISDRCRMResult:
 class AISDRCRMGateway:
     """Writes normalized AI SDR contacts to the shared CRM boundary."""
 
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, user_id: str) -> None:
         self.db = db
+        self.user_id = user_id
         self.settings = get_ai_sdr_settings()
 
     def upsert_contact(
@@ -42,6 +43,7 @@ class AISDRCRMGateway:
         existing = self._find_existing(contact)
         created = existing is None
         lead = existing or Lead(
+            user_id=self.user_id,
             dedupe_key=contact.dedupe_key,
             business_name=contact.business_name,
             lead_status=self.settings.default_crm_stage,
@@ -83,7 +85,11 @@ class AISDRCRMGateway:
                 filters.append(Lead.dedupe_key == f"domain:{domain}")
         if contact.phone:
             filters.append(Lead.phone == contact.phone)
-        return self.db.scalar(select(Lead).where(or_(*filters)).limit(1))
+        return self.db.scalar(
+            select(Lead)
+            .where(Lead.user_id == self.user_id, or_(*filters))
+            .limit(1)
+        )
 
     def _apply_contact(self, lead: Lead, contact: NormalizedContact, *, created: bool) -> None:
         if created or not lead.business_name:

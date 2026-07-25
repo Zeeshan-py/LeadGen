@@ -16,20 +16,10 @@ import type {
   Lead,
   Outreach,
 } from "@/lib/types";
-
-export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ??
-  (process.env.NODE_ENV === "production" ? "" : "http://localhost:8000");
+import { apiFetch, API_URL } from "@/lib/http";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-    ...init,
-  });
+  const response = await apiFetch(path, init);
   if (!response.ok) {
     const text = await response.text();
     let detail = "";

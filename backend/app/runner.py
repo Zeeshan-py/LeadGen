@@ -82,7 +82,7 @@ class OptionalSheetsStore:
             logger.exception("Google Sheets lead sync failed")
 
 
-def run_generation_job(job_id: str, payload: GenerateLeadRequest) -> None:
+def run_generation_job(job_id: str, payload: GenerateLeadRequest, user_id: str) -> None:
     job = get_job(job_id)
     if not job:
         logger.error("Generation job %s is not available in memory", job_id)
@@ -101,9 +101,9 @@ def run_generation_job(job_id: str, payload: GenerateLeadRequest) -> None:
     )
     try:
         with SessionLocal() as db:
-            settings = effective_settings(settings, db)
+            settings = effective_settings(settings, db, user_id)
             settings.require_generation_credentials()
-            campaign = _create_campaign(db, payload)
+            campaign = _create_campaign(db, payload, user_id)
             job.campaign_id = campaign.id
             update_job_record(db, job, status="running", campaign_id=campaign.id)
             job.emit(status="running", stage="Searching Google Maps", progress=4)
@@ -116,12 +116,14 @@ def run_generation_job(job_id: str, payload: GenerateLeadRequest) -> None:
             )
 
             sheets_store = _build_optional_sheets_store(settings, db, campaign.id)
-            existing_keys = set(db.scalars(select(Lead.dedupe_key)).all())
+            existing_keys = set(
+                db.scalars(select(Lead.dedupe_key).where(Lead.user_id == user_id)).all()
+            )
             existing_keys.update(sheets_store.existing_dedupe_keys())
 
             validation = LeadValidationService()
             candidates = validation.eligible_candidates(raw_leads)
-            pipeline = _build_pipeline(db, settings, validation)
+            pipeline = _build_pipeline(db, settings, validation, user_id)
             leads_for_sheets: list[PlaceLead] = []
             max_count = max(len(candidates), 1)
 
@@ -249,6 +251,7 @@ def _build_pipeline(
     db: Session,
     settings: Settings,
     validation: LeadValidationService,
+    user_id: str,
 ) -> LeadPipeline:
     js_fallback = ApifyWebCrawler(
         api_token=settings.apify_api_token,
@@ -276,6 +279,7 @@ def _build_pipeline(
         ai=ai,
         contact_extractor=contact_extractor,
         validation=validation,
+        user_id=user_id,
     )
 
 
@@ -316,10 +320,11 @@ def _build_optional_sheets_store(
         return OptionalSheetsStore()
 
 
-def _create_campaign(db: Session, payload: GenerateLeadRequest) -> Campaign:
+def _create_campaign(db: Session, payload: GenerateLeadRequest, user_id: str) -> Campaign:
     market = ", ".join(part for part in (payload.city, payload.country) if part)
     name = payload.campaign_name or f"{market} {payload.business_type}"
     campaign = Campaign(
+        user_id=user_id,
         name=name,
         city=payload.city,
         state="",

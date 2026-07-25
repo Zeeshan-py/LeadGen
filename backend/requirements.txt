@@ -6,6 +6,10 @@ sqlalchemy==2.0.45
 alembic==1.17.2
 psycopg[binary]>=3.2,<3.4
 python-dotenv==1.2.1
+python-jose[cryptography]>=3.3,<4.0
+passlib[bcrypt]>=1.7,<2.0
+bcrypt>=4.0,<4.1
+httpx>=0.28,<0.29
 google-genai==1.55.0
 twilio>=9.8,<10.0
 cartesia[websockets]>=3.0,<4.0

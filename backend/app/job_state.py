@@ -34,6 +34,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class GenerationJobState:
     id: str
+    user_id: str
     status: str = "queued"
     stage: str = "Queued"
     progress: int = 0
@@ -71,11 +72,11 @@ _JOBS: dict[str, GenerationJobState] = {}
 _JOBS_LOCK = threading.RLock()
 
 
-def create_generation_job(payload: GenerateLeadRequest) -> GenerationJobState:
-    job = GenerationJobState(id=str(uuid.uuid4()))
+def create_generation_job(payload: GenerateLeadRequest, user_id: str) -> GenerationJobState:
+    job = GenerationJobState(id=str(uuid.uuid4()), user_id=user_id)
     with _JOBS_LOCK:
         _JOBS[job.id] = job
-    _create_job_record(job.id, payload)
+    _create_job_record(job.id, payload, user_id)
     job.emit(status="queued", stage="Queued", progress=0)
     return job
 
@@ -90,18 +91,28 @@ def release_job(job_id: str) -> None:
         _JOBS.pop(job_id, None)
 
 
-def get_job_snapshot(job_id: str) -> dict[str, Any] | None:
+def get_job_snapshot(job_id: str, user_id: str) -> dict[str, Any] | None:
     job = get_job(job_id)
-    if job:
+    if job and job.user_id == user_id:
         return job.snapshot()
     with SessionLocal() as db:
-        record = db.get(LeadGenerationJob, job_id)
+        record = db.scalar(
+            select(LeadGenerationJob).where(
+                LeadGenerationJob.id == job_id,
+                LeadGenerationJob.user_id == user_id,
+            )
+        )
         return _snapshot_from_record(record) if record else None
 
 
-def get_latest_job_snapshot() -> dict[str, Any] | None:
+def get_latest_job_snapshot(user_id: str) -> dict[str, Any] | None:
     with SessionLocal() as db:
-        record = db.scalar(select(LeadGenerationJob).order_by(desc(LeadGenerationJob.created_at)).limit(1))
+        record = db.scalar(
+            select(LeadGenerationJob)
+            .where(LeadGenerationJob.user_id == user_id)
+            .order_by(desc(LeadGenerationJob.created_at))
+            .limit(1)
+        )
         return _snapshot_from_record(record) if record else None
 
 
@@ -130,11 +141,12 @@ def update_job_record(
     db.commit()
 
 
-def _create_job_record(job_id: str, payload: GenerateLeadRequest) -> None:
+def _create_job_record(job_id: str, payload: GenerateLeadRequest, user_id: str) -> None:
     with SessionLocal() as db:
         db.add(
             LeadGenerationJob(
                 id=job_id,
+                user_id=user_id,
                 status="queued",
                 city=payload.city,
                 state="",

@@ -17,6 +17,7 @@ from app.services.lead_pipeline import LeadPipeline
 from app.services.lead_search import LeadValidationService
 from lead_automation.contact_discovery import ContactDiscoveryResult
 from lead_automation.models import PlaceLead
+from tests import TEST_USER_ID
 
 
 class FakeScraper:
@@ -115,6 +116,7 @@ class PipelineTests(unittest.TestCase):
                 ai=ai,
                 contact_extractor=None,
                 validation=LeadValidationService(),
+                user_id=TEST_USER_ID,
             )
             lead = PlaceLead(
                 place_id="place-1",
@@ -207,6 +209,7 @@ class PipelineTests(unittest.TestCase):
                 ai=ai,
                 contact_extractor=None,
                 validation=LeadValidationService(),
+                user_id=TEST_USER_ID,
             )
             pipeline.contact_enrichment.discovery = discovery
             lead = PlaceLead(
@@ -285,6 +288,7 @@ class PipelineTests(unittest.TestCase):
                 ai=FakeAI(),
                 contact_extractor=None,
                 validation=LeadValidationService(),
+                user_id=TEST_USER_ID,
             )
             pipeline.contact_enrichment.discovery = discovery
             lead = PlaceLead(

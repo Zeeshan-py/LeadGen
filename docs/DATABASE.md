@@ -6,6 +6,13 @@ LeadForge uses PostgreSQL in production and SQLite in tests. SQLAlchemy models a
 
 ```mermaid
 erDiagram
+    users ||--o{ campaigns : owns
+    users ||--o{ leads : owns
+    users ||--o{ outreach : owns
+    users ||--o{ analytics : owns
+    users ||--o{ settings : owns
+    users ||--o{ refresh_tokens : has
+    users ||--o{ password_reset_tokens : has
     campaigns ||--o{ leads : contains
     campaigns ||--o{ outreach : groups
     crm_users ||--o{ leads : assigned
@@ -22,6 +29,29 @@ erDiagram
 
 ## Tables
 
+All workspace-owned records include `user_id`. Queries must filter by the authenticated user's ID. LeadForge intentionally does not have organizations, teams, members, invitations, or shared workspaces.
+
+### `users`
+
+Application accounts.
+
+Fields: `id`, `full_name`, `email`, `password_hash`, `provider`, `provider_id`, `avatar_url`, `is_admin`, `is_verified`, `created_at`, `updated_at`, `last_login`.
+Constraint: unique `email`.
+
+### `refresh_tokens`
+
+Server-side refresh sessions.
+
+Fields: `id`, `user_id`, `token_hash`, `user_agent`, `ip_address`, `expires_at`, `revoked_at`, `created_at`.
+Constraint: unique `token_hash`.
+
+### `password_reset_tokens`
+
+Password reset token records.
+
+Fields: `id`, `user_id`, `token_hash`, `expires_at`, `used_at`, `created_at`.
+Constraint: unique `token_hash`.
+
 ### `campaigns`
 
 Groups lead generation runs.
@@ -29,6 +59,7 @@ Groups lead generation runs.
 | Field | Purpose |
 |---|---|
 | `id` | UUID primary key. |
+| `user_id` | Owning account. |
 | `name` | Campaign name. |
 | `city`, `state`, `country`, `continent` | Market geography. |
 | `business_type` | Target industry/niche. |
@@ -43,15 +74,15 @@ Indexes: name, business_type, status.
 
 Assignable CRM users.
 
-Fields: `id`, `name`, `email`, `initials`, `is_active`, timestamps.
-Constraint: unique `email`.
+Fields: `id`, `user_id`, `name`, `email`, `initials`, `is_active`, timestamps.
+Constraint: unique `(user_id, email)`.
 
 ### `crm_tags`
 
 Reusable CRM tags.
 
-Fields: `id`, `name`, `color`, timestamps.
-Constraint: unique `name`.
+Fields: `id`, `user_id`, `name`, `color`, timestamps.
+Constraint: unique `(user_id, name)`.
 
 ### `leads`
 
@@ -59,7 +90,7 @@ Central CRM account/contact table.
 
 Fields include:
 
-- Identity: `id`, `campaign_id`, `dedupe_key`
+- Identity: `id`, `user_id`, `campaign_id`, `dedupe_key`
 - Business: `business_name`, `business_type`, `website`, `google_maps_url`
 - Contact: `contact_name`, `email`, `phone`
 - Location: `location`, `city`, `state`, `country`
@@ -67,26 +98,26 @@ Fields include:
 - CRM lifecycle: `lead_status`, `crm_stage`, `outreach_status`, `assigned_user_id`, `last_contacted_at`, `next_follow_up_at`
 - Metadata: `notes`, `tags`, `social_links`, `social_status`, `screenshot_url`, `source`, `raw`, timestamps
 
-Constraint: unique `dedupe_key`.
+Constraint: unique `(user_id, dedupe_key)`.
 
 ### `lead_tags`
 
 Many-to-many join table between leads and CRM tags.
 
-Fields: `lead_id`, `tag_id`, `created_at`.
+Fields: `user_id`, `lead_id`, `tag_id`, `created_at`.
 Primary key: `(lead_id, tag_id)`.
 
 ### `lead_notes`
 
 User notes on CRM leads.
 
-Fields: `id`, `lead_id`, `body`, `created_by`, timestamps.
+Fields: `id`, `user_id`, `lead_id`, `body`, `created_by`, timestamps.
 
 ### `lead_activities`
 
 Immutable CRM activity timeline.
 
-Fields: `id`, `lead_id`, `event_type`, `title`, `description`, `actor`, `metadata`, `created_at`.
+Fields: `id`, `user_id`, `lead_id`, `event_type`, `title`, `description`, `actor`, `metadata`, `created_at`.
 
 ### `outreach`
 
@@ -94,7 +125,7 @@ AI-generated outreach drafts and email lifecycle.
 
 Fields:
 
-- `id`, `lead_id`, `campaign_id`
+- `id`, `user_id`, `lead_id`, `campaign_id`
 - `subject_line`
 - `personalized_first_line`
 - `cold_email`
@@ -110,32 +141,33 @@ Fields:
 
 Synced Gmail messages.
 
-Fields: `id`, `lead_id`, `outreach_id`, `gmail_message_id`, `gmail_thread_id`, `message_id_header`, `direction`, `from_email`, `to_email`, `subject`, `body_text`, `body_html`, `snippet`, `message_at`, `created_at`.
-Constraint: unique `gmail_message_id`.
+Fields: `id`, `user_id`, `lead_id`, `outreach_id`, `gmail_message_id`, `gmail_thread_id`, `message_id_header`, `direction`, `from_email`, `to_email`, `subject`, `body_text`, `body_html`, `snippet`, `message_at`, `created_at`.
+Constraint: unique `(user_id, gmail_message_id)`.
 
 ### `analytics`
 
 Platform event records.
 
-Fields: `id`, `event_type`, `lead_id`, `campaign_id`, `metadata`, `created_at`.
+Fields: `id`, `user_id`, `event_type`, `lead_id`, `campaign_id`, `metadata`, `created_at`.
 
 ### `settings`
 
 Runtime settings overrides.
 
-Fields: `key`, `value`, `is_secret`, `updated_at`.
+Fields: `user_id`, `key`, `value`, `is_secret`, `updated_at`.
+Primary key: `(user_id, key)`.
 
 ### `lead_generation_jobs`
 
 Background job tracking.
 
-Fields: `id`, `campaign_id`, `status`, `city`, `state`, `country`, `continent`, `business_type`, `website_mode`, `max_leads`, `progress`, `lead_counter`, `success_counter`, `failure_counter`, `error`, `created_at`, `finished_at`.
+Fields: `id`, `user_id`, `campaign_id`, `status`, `city`, `state`, `country`, `continent`, `business_type`, `website_mode`, `max_leads`, `progress`, `lead_counter`, `success_counter`, `failure_counter`, `error`, `created_at`, `finished_at`.
 
 ### `ai_sdr_contact_batches`
 
 AI SDR import batch metadata.
 
-Fields: `id`, `source_type`, `status`, `total_count`, `normalized_count`, `stored_count`, `duplicate_count`, `failed_count`, `created_by`, `configuration`, `error`, timestamps.
+Fields: `id`, `user_id`, `source_type`, `status`, `total_count`, `normalized_count`, `stored_count`, `duplicate_count`, `failed_count`, `created_by`, `configuration`, `error`, timestamps.
 
 Indexes: source/status.
 
@@ -143,7 +175,7 @@ Indexes: source/status.
 
 AI SDR per-contact import record.
 
-Fields: `id`, `batch_id`, `crm_lead_id`, `source_type`, `external_id`, `status`, `dedupe_key`, `normalized`, `raw`, `errors`, timestamps.
+Fields: `id`, `user_id`, `batch_id`, `crm_lead_id`, `source_type`, `external_id`, `status`, `dedupe_key`, `normalized`, `raw`, `errors`, timestamps.
 
 Indexes: batch/status, CRM lead ID, source type, external ID, dedupe key.
 
@@ -157,7 +189,6 @@ Indexes: batch/status, CRM lead ID, source type, external ID, dedupe key.
 ## Future Migrations
 
 - Persistent conversation session tables.
-- Tenant/organization tables.
 - API token table.
 - Billing/subscription tables.
 - Job queue/task tables.

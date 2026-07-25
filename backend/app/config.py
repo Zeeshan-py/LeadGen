@@ -32,8 +32,22 @@ class Settings(BaseSettings):
         default="http://localhost:8000",
         validation_alias=AliasChoices("PUBLIC_URL", "PUBLIC_BACKEND_URL"),
     )
-    basic_auth_username: str = Field(default="", validation_alias="BASIC_AUTH_USERNAME")
-    basic_auth_password: str = Field(default="", validation_alias="BASIC_AUTH_PASSWORD")
+    jwt_secret_key: str = Field(default="", validation_alias="JWT_SECRET_KEY")
+    jwt_issuer: str = Field(default="leadforge", validation_alias="JWT_ISSUER")
+    access_token_minutes: int = Field(default=15, validation_alias="ACCESS_TOKEN_MINUTES")
+    refresh_token_days: int = Field(default=30, validation_alias="REFRESH_TOKEN_DAYS")
+    session_refresh_token_days: int = Field(default=1, validation_alias="SESSION_REFRESH_TOKEN_DAYS")
+    password_reset_token_minutes: int = Field(default=30, validation_alias="PASSWORD_RESET_TOKEN_MINUTES")
+    auth_cookie_secure: bool | None = Field(default=None, validation_alias="AUTH_COOKIE_SECURE")
+    auth_cookie_domain: str = Field(default="", validation_alias="AUTH_COOKIE_DOMAIN")
+    admin_email: str = Field(default="", validation_alias="ADMIN_EMAIL")
+    admin_password: str = Field(default="", validation_alias="ADMIN_PASSWORD")
+    google_oauth_client_id: str = Field(default="", validation_alias="GOOGLE_OAUTH_CLIENT_ID")
+    google_oauth_client_secret: str = Field(default="", validation_alias="GOOGLE_OAUTH_CLIENT_SECRET")
+    google_oauth_redirect_uri: str = Field(default="", validation_alias="GOOGLE_OAUTH_REDIRECT_URI")
+    github_oauth_client_id: str = Field(default="", validation_alias="GITHUB_OAUTH_CLIENT_ID")
+    github_oauth_client_secret: str = Field(default="", validation_alias="GITHUB_OAUTH_CLIENT_SECRET")
+    github_oauth_redirect_uri: str = Field(default="", validation_alias="GITHUB_OAUTH_REDIRECT_URI")
     database_pool_size: int = Field(default=5, validation_alias="DATABASE_POOL_SIZE")
     database_max_overflow: int = Field(default=10, validation_alias="DATABASE_MAX_OVERFLOW")
     frontend_static_dir: Path = Field(default=Path("./frontend"), validation_alias="FRONTEND_STATIC_DIR")
@@ -78,6 +92,11 @@ class Settings(BaseSettings):
     def normalize_frontend_origin(cls, value: str) -> str:
         return value.rstrip("/")
 
+    @field_validator("admin_email")
+    @classmethod
+    def normalize_admin_email(cls, value: str) -> str:
+        return value.strip().lower()
+
     @field_validator("database_url")
     @classmethod
     def normalize_database_url(cls, value: str) -> str:
@@ -119,8 +138,9 @@ class Settings(BaseSettings):
         missing = [
             name
             for name, value in {
-                "BASIC_AUTH_USERNAME": self.basic_auth_username,
-                "BASIC_AUTH_PASSWORD": self.basic_auth_password,
+                "JWT_SECRET_KEY": self.jwt_secret_key,
+                "ADMIN_EMAIL": self.admin_email,
+                "ADMIN_PASSWORD": self.admin_password,
             }.items()
             if not value
         ]
@@ -128,6 +148,19 @@ class Settings(BaseSettings):
             raise RuntimeError(
                 "Production configuration is incomplete: " + ", ".join(missing)
             )
+
+    @property
+    def secure_auth_cookies(self) -> bool:
+        if self.auth_cookie_secure is not None:
+            return self.auth_cookie_secure
+        return self.environment.lower() == "production"
+
+    def oauth_redirect_uri(self, provider: str) -> str:
+        if provider == "google" and self.google_oauth_redirect_uri:
+            return self.google_oauth_redirect_uri
+        if provider == "github" and self.github_oauth_redirect_uri:
+            return self.github_oauth_redirect_uri
+        return f"{self.public_backend_url.rstrip('/')}/auth/{provider}/callback"
 
 
 @lru_cache(maxsize=1)

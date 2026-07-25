@@ -52,8 +52,13 @@ def record_crm_activity(
     description: str = "",
     actor: str = "LeadForge AI",
     metadata: dict[str, Any] | None = None,
+    user_id: str | None = None,
 ) -> LeadActivity:
+    owner_id = user_id or db.scalar(select(Lead.user_id).where(Lead.id == lead_id))
+    if not owner_id:
+        raise ValueError("CRM activity requires a user-owned lead")
     activity = LeadActivity(
+        user_id=owner_id,
         lead_id=lead_id,
         event_type=event_type,
         title=title,
@@ -104,13 +109,15 @@ def replace_lead_tags(
     )
     existing_tags = {
         tag.name: tag
-        for tag in db.scalars(select(CrmTag).where(CrmTag.name.in_(normalized))).all()
+        for tag in db.scalars(
+            select(CrmTag).where(CrmTag.user_id == lead.user_id, CrmTag.name.in_(normalized))
+        ).all()
     } if normalized else {}
     tags: list[CrmTag] = []
     for name in normalized:
         tag = existing_tags.get(name)
         if tag is None:
-            tag = CrmTag(name=name)
+            tag = CrmTag(user_id=lead.user_id, name=name)
             db.add(tag)
             db.flush()
         tags.append(tag)
@@ -118,7 +125,7 @@ def replace_lead_tags(
     lead.crm_tag_links.clear()
     db.flush()
     for tag in tags:
-        lead.crm_tag_links.append(LeadTag(tag=tag))
+        lead.crm_tag_links.append(LeadTag(user_id=lead.user_id, tag=tag))
     lead.tags = normalized
     record_crm_activity(
         db,

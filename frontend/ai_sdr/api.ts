@@ -20,20 +20,10 @@ import type {
   AISDRManualBridgeCallResponse,
   AISDRSourceDescriptor,
 } from "./types";
-
-const API_URL =
-  process.env.NEXT_PUBLIC_API_URL ??
-  (process.env.NODE_ENV === "production" ? "" : "http://localhost:8000");
+import { apiFetch } from "@/lib/http";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-    ...init,
-  });
+  const response = await apiFetch(path, init);
   if (!response.ok) {
     const text = await response.text();
     let detail = "";
@@ -121,12 +111,8 @@ export function controlAISDRCall(callId: string, action: string) {
 }
 
 export async function exportAISDRContacts(contactIds: string[]) {
-  const response = await fetch(`${API_URL}/ai-sdr/contacts/export.csv`, {
-    cache: "no-store",
+  const response = await apiFetch("/ai-sdr/contacts/export.csv", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({ contact_ids: contactIds, actor: "LeadForge user" }),
   });
   if (!response.ok) {

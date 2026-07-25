@@ -29,12 +29,12 @@ Potential SaaS tiers:
 
 - Starter: limited lead generation, CRM, manual AI SDR imports.
 - Growth: higher generation limits, Gmail automation, AI outreach, exports.
-- Agency: multi-client workspaces, bulk AI SDR imports, analytics.
+- Agency: higher private-workspace limits, bulk AI SDR imports, analytics.
 - Enterprise: SSO, audit logs, custom integrations, dedicated support.
 
 ## Future SaaS Plans
 
-- Multi-tenant accounts.
+- Private SaaS accounts.
 - Billing and subscriptions.
 - Voice calling integration.
 - Shared inbox.

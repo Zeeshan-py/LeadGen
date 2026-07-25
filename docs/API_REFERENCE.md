@@ -2,14 +2,15 @@
 
 Base URL in local development: `http://localhost:8000`.
 
-Production authentication: Basic Auth is required when `ENVIRONMENT=production`, except health endpoints.
+Authentication uses HttpOnly JWT cookies with server-side refresh tokens. Health readiness endpoints and email tracking pixels are public; product APIs require a signed-in account and are automatically scoped to that account's private workspace.
 
 ## Common Errors
 
 | Status | Meaning |
 |---|---|
 | 400 | Invalid request or configuration. |
-| 401 | Missing/invalid production Basic Auth. |
+| 401 | Missing, invalid, or expired authentication. |
+| 403 | CSRF validation failed or the account cannot access the resource. |
 | 404 | Resource not found. |
 | 503 | Database/integration/module unavailable. |
 
@@ -20,13 +21,31 @@ Production authentication: Basic Auth is required when `ENVIRONMENT=production`,
 | GET | `/health` | Liveness check. |
 | GET | `/health/live` | Liveness check. |
 | GET | `/health/ready` | Database readiness check. |
-| GET | `/health/google` | Google Sheets credential/spreadsheet check. |
+| GET | `/health/google` | Google Sheets credential/spreadsheet check for the signed-in account. |
 
 Example:
 
 ```bash
 curl http://localhost:8000/health/ready
 ```
+
+## Auth
+
+| Method | Route | Description |
+|---|---|---|
+| POST | `/auth/signup` | Create an email/password account and private workspace session. |
+| POST | `/auth/login` | Login with email/password. Admin is detected by `ADMIN_EMAIL`. |
+| POST | `/auth/refresh` | Rotate refresh token and issue a new access cookie. |
+| POST | `/auth/logout` | Revoke the current refresh token and clear cookies. |
+| GET | `/auth/me` | Return the signed-in user. |
+| POST | `/auth/forgot-password` | Create a password reset token. |
+| POST | `/auth/reset-password` | Set a new password from a reset token. |
+| GET | `/auth/google/login` | Start Google OAuth. |
+| GET | `/auth/google/callback` | Google OAuth callback. |
+| GET | `/auth/github/login` | Start GitHub OAuth. |
+| GET | `/auth/github/callback` | GitHub OAuth callback. |
+
+Unsafe API methods require the `X-CSRF-Token` header to match the readable `leadforge_csrf` cookie when using cookie auth.
 
 ## Lead Generation
 

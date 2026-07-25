@@ -2,21 +2,18 @@
 
 ## Authentication
 
-Production uses HTTP Basic Auth enforced by middleware when `ENVIRONMENT=production`. Health endpoints remain public for platform readiness checks.
+LeadForge uses account-based authentication with JWT access cookies, server-side refresh tokens, email/password login, Google OAuth, GitHub OAuth, logout, and password reset tokens. Health readiness endpoints remain public for platform checks.
 
-Future SaaS releases should replace Basic Auth with organization-aware user authentication.
+Admin access is not a separate login system. A user is marked admin only when the logged-in email matches `ADMIN_EMAIL`; the admin email/password are configured with environment variables.
 
 ## Authorization
 
-Current release does not implement role-based authorization. All authenticated production users can access the platform.
+The product intentionally uses a simple private-workspace model:
 
-Recommended future roles:
-
-- Admin
-- Sales Manager
-- SDR
-- Viewer
-- Integration Bot
+- One account equals one private workspace.
+- Every user-owned table has `user_id`.
+- API routes filter by the authenticated user's ID.
+- No organizations, teams, invitations, collaboration, or shared workspaces are implemented.
 
 ## Secrets
 
@@ -27,7 +24,8 @@ Secrets include:
 - Gemini key.
 - Google service account JSON.
 - Gmail OAuth client secret and refresh token.
-- Basic Auth password.
+- JWT signing secret.
+- Admin password.
 - Twilio auth token.
 - Cartesia API key.
 
@@ -44,13 +42,13 @@ Provider API keys are backend-only. The frontend should only receive `NEXT_PUBLI
 
 AI SDR calling provider keys must remain server-side:
 
-- Twilio callbacks bypass Basic Auth so Twilio can reach them, then validate `X-Twilio-Signature`.
+- Twilio callbacks bypass user authentication so Twilio can reach them, then validate `X-Twilio-Signature`.
 - Keep `TWILIO_VALIDATE_SIGNATURE=true` in public environments.
 - Cartesia and Gemini keys are never sent to the browser.
 
 ## Rate Limiting
 
-Rate limiting is not currently implemented. Add it before public multi-tenant launch, especially for:
+Login, sign up, and forgot-password routes include in-memory rate limiting. Add durable shared rate limiting before horizontal public scaling, especially for:
 
 - `/generate-leads`
 - `/send-email`

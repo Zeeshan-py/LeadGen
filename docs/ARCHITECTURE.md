@@ -138,14 +138,15 @@ They do not communicate by importing private implementation details across bound
 
 ## Authentication
 
-Current production authentication is HTTP Basic Auth enforced by FastAPI middleware when `ENVIRONMENT=production`. Development mode bypasses this to simplify local work.
+LeadForge uses account-based SaaS authentication. Users can sign up or log in with email/password, Google OAuth, or GitHub OAuth. JWT access tokens are stored in HttpOnly cookies, refresh tokens are hashed and persisted server-side, and unsafe API requests use CSRF validation.
 
-Future SaaS authentication should add:
+The authorization model is intentionally simple:
 
-- User accounts and sessions.
-- Role-based access control.
-- Organization/tenant boundaries.
-- API tokens for integrations.
+- One account equals one private workspace.
+- User-owned tables carry `user_id`.
+- API routes filter with the authenticated user's ID.
+- There are no organizations, teams, invitations, members, or shared workspaces.
+- Admin status is assigned only when the logged-in email matches `ADMIN_EMAIL`.
 
 ## Database
 
@@ -153,6 +154,7 @@ SQLAlchemy declarative models define the application schema. Alembic handles mig
 
 Core database principles:
 
+- User-owned records are scoped by `user_id`.
 - CRM centralizes lead/contact state.
 - Activity tables preserve audit history.
 - AI SDR stores import metadata separately from CRM contact records.
@@ -268,7 +270,11 @@ Recommended production additions:
 
 Current controls:
 
-- Production Basic Auth.
+- JWT cookie authentication with refresh-token rotation.
+- Password hashing for email/password accounts.
+- CSRF checks for unsafe cookie-authenticated API methods.
+- Per-account data filtering through `user_id`.
+- Login/sign-up/password-reset rate limiting.
 - CORS restricted to configured frontend origins.
 - Secrets supplied through environment variables.
 - API keys never required in frontend code.
@@ -276,9 +282,7 @@ Current controls:
 
 Future controls:
 
-- OAuth/session auth.
-- RBAC.
-- Rate limiting.
+- Durable shared rate limiting for multi-process deployments.
 - Audit log export.
 - Secret rotation policies.
 - Data retention controls.
@@ -311,4 +315,4 @@ LeadForge can be extended by adding:
 - HubSpot/Salesforce sync.
 - Calendar scheduling.
 - Webhook subscriptions.
-- Multi-tenant identity provider.
+- Subscription management for private accounts.

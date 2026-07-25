@@ -64,6 +64,6 @@ Shared APIs include health and settings:
 ## Future Improvements
 
 - Formal dependency injection container.
-- Multi-tenant settings.
+- Per-account settings metadata.
 - Shared audit/event bus.
 - API client code generation from OpenAPI.

@@ -29,10 +29,74 @@ class TimestampMixin:
     )
 
 
+class User(Base, TimestampMixin):
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_users_email"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    full_name: Mapped[str] = mapped_column(String(160), default="")
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    password_hash: Mapped[str] = mapped_column(String(255), default="")
+    provider: Mapped[str] = mapped_column(String(40), default="email", index=True)
+    provider_id: Mapped[str] = mapped_column(String(255), default="")
+    avatar_url: Mapped[str] = mapped_column(String(800), default="")
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    __table_args__ = (UniqueConstraint("token_hash", name="uq_refresh_tokens_token_hash"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String(128), index=True)
+    user_agent: Mapped[str] = mapped_column(String(500), default="")
+    ip_address: Mapped[str] = mapped_column(String(80), default="")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship(back_populates="refresh_tokens")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = (UniqueConstraint("token_hash", name="uq_password_reset_tokens_token_hash"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+    )
+    token_hash: Mapped[str] = mapped_column(String(128), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User] = relationship(back_populates="password_reset_tokens")
+
+
 class Campaign(Base, TimestampMixin):
     __tablename__ = "campaigns"
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(180), index=True)
     city: Mapped[str] = mapped_column(String(120), default="")
     state: Mapped[str] = mapped_column(String(120), default="")
@@ -51,9 +115,10 @@ class Campaign(Base, TimestampMixin):
 
 class CrmUser(Base, TimestampMixin):
     __tablename__ = "crm_users"
-    __table_args__ = (UniqueConstraint("email", name="uq_crm_users_email"),)
+    __table_args__ = (UniqueConstraint("user_id", "email", name="uq_crm_users_user_email"),)
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(160), index=True)
     email: Mapped[str] = mapped_column(String(320), default="", index=True)
     initials: Mapped[str] = mapped_column(String(8), default="")
@@ -64,9 +129,10 @@ class CrmUser(Base, TimestampMixin):
 
 class CrmTag(Base, TimestampMixin):
     __tablename__ = "crm_tags"
-    __table_args__ = (UniqueConstraint("name", name="uq_crm_tags_name"),)
+    __table_args__ = (UniqueConstraint("user_id", "name", name="uq_crm_tags_user_name"),)
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(80), index=True)
     color: Mapped[str] = mapped_column(String(40), default="")
 
@@ -78,9 +144,10 @@ class CrmTag(Base, TimestampMixin):
 
 class Lead(Base, TimestampMixin):
     __tablename__ = "leads"
-    __table_args__ = (UniqueConstraint("dedupe_key", name="uq_leads_dedupe_key"),)
+    __table_args__ = (UniqueConstraint("user_id", "dedupe_key", name="uq_leads_user_dedupe_key"),)
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     campaign_id: Mapped[str | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True, index=True)
     dedupe_key: Mapped[str] = mapped_column(String(255), index=True)
     business_name: Mapped[str] = mapped_column(String(240), index=True)
@@ -149,6 +216,7 @@ class Lead(Base, TimestampMixin):
 class LeadTag(Base):
     __tablename__ = "lead_tags"
 
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     lead_id: Mapped[str] = mapped_column(
         ForeignKey("leads.id", ondelete="CASCADE"),
         primary_key=True,
@@ -170,6 +238,7 @@ class LeadNote(Base, TimestampMixin):
     __tablename__ = "lead_notes"
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     lead_id: Mapped[str] = mapped_column(
         ForeignKey("leads.id", ondelete="CASCADE"),
         index=True,
@@ -184,6 +253,7 @@ class LeadActivity(Base):
     __tablename__ = "lead_activities"
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     lead_id: Mapped[str] = mapped_column(
         ForeignKey("leads.id", ondelete="CASCADE"),
         index=True,
@@ -206,6 +276,7 @@ class Outreach(Base, TimestampMixin):
     __tablename__ = "outreach"
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     lead_id: Mapped[str] = mapped_column(ForeignKey("leads.id"), index=True)
     campaign_id: Mapped[str | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True, index=True)
     subject_line: Mapped[str] = mapped_column(String(220), default="")
@@ -232,10 +303,11 @@ class Outreach(Base, TimestampMixin):
 class EmailMessage(Base):
     __tablename__ = "email_messages"
     __table_args__ = (
-        UniqueConstraint("gmail_message_id", name="uq_email_messages_gmail_message_id"),
+        UniqueConstraint("user_id", "gmail_message_id", name="uq_email_messages_user_gmail_message_id"),
     )
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     lead_id: Mapped[str] = mapped_column(
         ForeignKey("leads.id", ondelete="CASCADE"),
         index=True,
@@ -269,6 +341,7 @@ class Analytics(Base):
     __tablename__ = "analytics"
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     event_type: Mapped[str] = mapped_column(String(80), index=True)
     lead_id: Mapped[str | None] = mapped_column(ForeignKey("leads.id"), nullable=True, index=True)
     campaign_id: Mapped[str | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True, index=True)
@@ -279,6 +352,7 @@ class Analytics(Base):
 class Setting(Base):
     __tablename__ = "settings"
 
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     key: Mapped[str] = mapped_column(String(120), primary_key=True)
     value: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     is_secret: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -291,6 +365,7 @@ class LeadGenerationJob(Base):
     __tablename__ = "lead_generation_jobs"
 
     id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     campaign_id: Mapped[str | None] = mapped_column(ForeignKey("campaigns.id"), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(40), default="queued", index=True)
     city: Mapped[str] = mapped_column(String(120), default="")

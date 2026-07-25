@@ -13,6 +13,8 @@ node_modules/
 out/
 dist/
 storage/
+local/
+work/
 coverage/
 service-account.json
 /lead-generation-*.json

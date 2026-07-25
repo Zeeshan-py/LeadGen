@@ -7,9 +7,10 @@
 
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { AppShell } from "@/components/app-shell";
+import { RouteShell } from "@/components/route-shell";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/lib/auth";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -24,7 +25,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "LeadForge AI",
-  description: "Internal AI lead generation command center",
+  description: "Private AI lead generation workspace",
 };
 
 export default function RootLayout({
@@ -38,7 +39,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <TooltipProvider>
-          <AppShell>{children}</AppShell>
+          <AuthProvider>
+            <RouteShell>{children}</RouteShell>
+          </AuthProvider>
           <Toaster richColors position="top-right" />
         </TooltipProvider>
       </body>

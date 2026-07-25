@@ -26,8 +26,9 @@ from ai_sdr.services.normalization import contact_to_raw_payload, normalize_cont
 
 
 class AISDRIngestionService:
-    def __init__(self, db: Session) -> None:
+    def __init__(self, db: Session, user_id: str) -> None:
         self.db = db
+        self.user_id = user_id
         self.settings = get_ai_sdr_settings()
 
     def ingest_contacts(self, payload: AISDRImportCreate) -> AISDRImportResponse:
@@ -39,6 +40,7 @@ class AISDRIngestionService:
             )
 
         batch = AISDRContactBatch(
+            user_id=self.user_id,
             source_type=payload.source_type.value,
             status=AISDRImportStatus.PROCESSING.value,
             total_count=len(payload.contacts),
@@ -48,10 +50,11 @@ class AISDRIngestionService:
         self.db.add(batch)
         self.db.flush()
 
-        gateway = AISDRCRMGateway(self.db)
+        gateway = AISDRCRMGateway(self.db, self.user_id)
         for contact in payload.contacts:
             raw_payload = contact_to_raw_payload(contact)
             record = AISDRContactRecord(
+                user_id=self.user_id,
                 batch_id=batch.id,
                 source_type=payload.source_type.value,
                 external_id=str(raw_payload.get("external_id") or raw_payload.get("externalId") or ""),
@@ -94,7 +97,11 @@ class AISDRIngestionService:
         limit: int = 50,
         offset: int = 0,
     ) -> list[AISDRBatchRead]:
-        query = select(AISDRContactBatch).order_by(desc(AISDRContactBatch.created_at))
+        query = (
+            select(AISDRContactBatch)
+            .where(AISDRContactBatch.user_id == self.user_id)
+            .order_by(desc(AISDRContactBatch.created_at))
+        )
         if source_type:
             query = query.where(AISDRContactBatch.source_type == source_type.value)
         if status:
@@ -106,7 +113,7 @@ class AISDRIngestionService:
         batch = self.db.scalar(
             select(AISDRContactBatch)
             .options(selectinload(AISDRContactBatch.records))
-            .where(AISDRContactBatch.id == batch_id)
+            .where(AISDRContactBatch.id == batch_id, AISDRContactBatch.user_id == self.user_id)
         )
         if not batch:
             return None

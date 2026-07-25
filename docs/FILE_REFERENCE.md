@@ -15,29 +15,40 @@ This reference documents the major Python, TypeScript, CSS, Docker, configuratio
 | `database/schema.sql` | SQL schema reference. | SQL readers/tools. | Not the primary migration source. | Generate from Alembic for drift checks. |
 | `scripts/dev.ps1` | Local startup helper. | Local PowerShell environment. | Starts platform dependencies/processes. | Add health checks and teardown. |
 
-## Root Legacy Automation Files
+## Legacy Automation Archive
 
-These root Python files mirror or predate `backend/lead_automation`. The backend package is the production path.
+These Python files mirror or predate `backend/lead_automation`. They are archived under `legacy/lead_automation` so the project root stays focused on runtime entrypoints and deployment config. The backend package is the production path.
 
 | File | Purpose | Notes |
 |---|---|---|
-| `main.py`, `__main__.py` | Legacy CLI entrypoints. | Keep for compatibility; prefer backend APIs. |
-| `config.py` | Legacy automation configuration. | Backend config is authoritative for SaaS runtime. |
-| `models.py` | Legacy data structures. | Backend SQLAlchemy models are production persistence. |
-| `apify_maps.py`, `apify_web.py` | Legacy Apify integration modules. | Production equivalents live under `backend/lead_automation`. |
-| `website_scraper.py` | Legacy website scraping. | Production equivalent lives under `backend/lead_automation`. |
-| `ai_extractor.py` | Legacy AI extraction helpers. | Retained for compatibility. |
-| `coverage.py` | Legacy coverage/report helper. | Avoid conflicting with Python `coverage` package naming in new code. |
-| `sheets.py` | Legacy Sheets integration. | Backend Google Sheets modules are preferred. |
+| `legacy/lead_automation/main.py`, `legacy/lead_automation/__main__.py` | Legacy CLI entrypoints. | Keep for compatibility; prefer backend APIs. |
+| `legacy/lead_automation/config.py` | Legacy automation configuration. | Backend config is authoritative for SaaS runtime. |
+| `legacy/lead_automation/models.py` | Legacy data structures. | Backend SQLAlchemy models are production persistence. |
+| `legacy/lead_automation/apify_maps.py`, `legacy/lead_automation/apify_web.py` | Legacy Apify integration modules. | Production equivalents live under `backend/lead_automation`. |
+| `legacy/lead_automation/website_scraper.py` | Legacy website scraping. | Production equivalent lives under `backend/lead_automation`. |
+| `legacy/lead_automation/ai_extractor.py` | Legacy AI extraction helpers. | Retained for compatibility. |
+| `legacy/lead_automation/coverage.py` | Legacy coverage/report helper. | Avoid conflicting with Python `coverage` package naming in new code. |
+| `legacy/lead_automation/sheets.py` | Legacy Sheets integration. | Backend Google Sheets modules are preferred. |
+
+## Local and Work Folders
+
+| Folder | Purpose | Notes |
+|---|---|---|
+| `local/logs` | Historical `.log` and `.err` runtime output. | Ignored by git. New runs may still create root logs if launched by older commands. |
+| `local/pids` | Historical process ID files. | Ignored by git. |
+| `local/data` | Local SQLite/database snapshots. | Ignored by git. |
+| `local/secrets` | Local service-account and generated credential JSON files. | Ignored by git; do not commit real secrets. |
+| `local/cache` | Moved Python and pytest cache folders. | Ignored by git. |
+| `work/documents` | Generated PDFs, decks, reports, and document build scratch space. | Ignored by git. |
 
 ## Backend App
 
 | File | Purpose and Responsibilities | Inputs / Outputs | Dependencies / Side Effects | Future Extensions |
 |---|---|---|---|---|
 | `backend/app/main.py` | FastAPI app factory/module, platform routes, middleware, health, lead generation, outreach, settings, analytics. | HTTP requests/responses, SSE streams. | Includes CRM and AI SDR routers; writes DB; calls Gmail/Gemini/Sheets. | Split large route groups into routers. |
-| `backend/app/config.py` | Pydantic settings for backend runtime. | Environment variables. | Cached settings object. | Add tenant-aware config. |
+| `backend/app/config.py` | Pydantic settings for backend runtime. | Environment variables. | Cached settings object. | Add integration/provider config. |
 | `backend/app/database.py` | SQLAlchemy `Base`, engine, session, readiness check. | `DATABASE_URL`. | Opens DB connections. | Separate sync/async engines if needed. |
-| `backend/app/models.py` | Core SQLAlchemy tables. | ORM access. | Defines migrations target metadata. | Add tenant/billing/conversation tables. |
+| `backend/app/models.py` | Core SQLAlchemy tables. | ORM access. | Defines migrations target metadata. | Add billing/conversation tables. |
 | `backend/app/schemas.py` | Pydantic API contracts. | Route validation/serialization. | Shapes public API. | Generate OpenAPI docs from examples. |
 | `backend/app/runner.py` | Lead generation job orchestration. | Generation request payload. | Runs automation, updates jobs/CRM. | Move to external worker. |
 | `backend/app/job_state.py` | In-memory job/event state. | Job IDs and snapshots. | Process-local state. | Replace with Redis/Postgres event store. |
@@ -128,7 +139,12 @@ These root Python files mirror or predate `backend/lead_automation`. The backend
 |---|---|
 | `frontend/src/app/layout.tsx` | Root layout, fonts, shell, providers. |
 | `frontend/src/app/globals.css` | Tailwind/theme/global styles. |
-| `frontend/src/app/page.tsx` | Dashboard home. |
+| `frontend/src/app/page.tsx` | Public landing page. |
+| `frontend/src/app/dashboard/page.tsx` | Dashboard home. |
+| `frontend/src/app/login/page.tsx` | Login page. |
+| `frontend/src/app/signup/page.tsx` | Sign-up page. |
+| `frontend/src/app/forgot-password/page.tsx` | Forgot-password page. |
+| `frontend/src/app/reset-password/page.tsx` | Reset-password page. |
 | `frontend/src/app/lead-generator/page.tsx` | Lead generation UI and SSE progress. |
 | `frontend/src/app/leads/page.tsx` | Leads list/export UI. |
 | `frontend/src/app/crm/page.tsx` | CRM workspace route. |
@@ -144,12 +160,15 @@ These root Python files mirror or predate `backend/lead_automation`. The backend
 | File | Purpose |
 |---|---|
 | `frontend/src/lib/api.ts` | Main frontend API client. |
+| `frontend/src/lib/auth.tsx` | Auth context and session actions. |
+| `frontend/src/lib/http.ts` | Cookie/CSRF-aware fetch helper. |
 | `frontend/src/lib/types.ts` | Main frontend TypeScript contracts. |
 | `frontend/src/lib/utils.ts` | Shared utility helpers. |
 | `frontend/src/lib/format.ts` | Formatting helpers. |
 | `frontend/src/lib/markets.ts` | Market/location constants. |
 | `frontend/src/hooks/use-mobile.ts` | Responsive/mobile hook. |
 | `frontend/src/components/app-shell.tsx` | Application shell and navigation. |
+| `frontend/src/components/route-shell.tsx` | Public/protected route shell and redirect guard. |
 | `frontend/src/components/metric-card.tsx` | Dashboard metric card. |
 | `frontend/src/components/chart-panel.tsx` | Chart wrapper component. |
 | `frontend/src/components/status-badge.tsx` | Status badge rendering. |

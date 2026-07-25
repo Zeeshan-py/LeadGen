@@ -5,7 +5,7 @@
 This review covered every Python module under `backend/app` and
 `backend/lead_automation`, the active FastAPI routes, SQLAlchemy persistence,
 background jobs, scrapers, AI clients, Google integrations, runtime
-configuration, Docker entry point, and the legacy root-level automation copy.
+configuration, Docker entry point, and the archived legacy automation copy.
 
 No frontend files, API response models, routes, database models, or database
 schema files were changed. No scraper or third-party integration was added.
@@ -74,8 +74,9 @@ fallback.
 
 - FastAPI `BackgroundTasks` and in-memory queues are not durable. A process
   restart loses active work, and multiple API workers cannot share live events.
-- Root-level automation files duplicate `backend/lead_automation`. They appear
-  to preserve the original CLI and were not deleted without a migration plan.
+- Archived legacy automation files duplicate `backend/lead_automation`. They
+  appear to preserve the original CLI and were not deleted without a migration
+  plan.
 - Runtime `ALTER TABLE` logic exists without a real migration tool, and
   `database/schema.sql` is not fully aligned with runtime models.
 - The API has no authentication, authorization, tenant isolation, or rate

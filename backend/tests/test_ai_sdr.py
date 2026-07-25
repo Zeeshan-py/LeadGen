@@ -38,6 +38,7 @@ from ai_sdr.services.dashboard import AISDRDashboardService
 from ai_sdr.services.ingestion import AISDRIngestionService
 from app.database import Base
 from app.models import Lead, LeadActivity
+from tests import TEST_USER_ID
 
 
 class AISDRTests(unittest.TestCase):
@@ -47,7 +48,7 @@ class AISDRTests(unittest.TestCase):
 
     def test_rest_contacts_are_normalized_and_stored_in_crm(self) -> None:
         with Session(self.engine) as db:
-            response = AISDRIngestionService(db).ingest_contacts(
+            response = AISDRIngestionService(db, TEST_USER_ID).ingest_contacts(
                 AISDRImportCreate(
                     source_type=AISDRSourceType.REST_API,
                     contacts=[
@@ -95,7 +96,7 @@ class AISDRTests(unittest.TestCase):
             db.add(lead)
             db.commit()
 
-            response = AISDRIngestionService(db).ingest_contacts(
+            response = AISDRIngestionService(db, TEST_USER_ID).ingest_contacts(
                 AISDRImportCreate(
                     source_type=AISDRSourceType.MANUAL_ENTRY,
                     contacts=[
@@ -153,7 +154,7 @@ class AISDRTests(unittest.TestCase):
 
     def test_invalid_contact_is_tracked_without_crm_write(self) -> None:
         with Session(self.engine) as db:
-            response = AISDRIngestionService(db).ingest_contacts(
+            response = AISDRIngestionService(db, TEST_USER_ID).ingest_contacts(
                 AISDRImportCreate(
                     source_type=AISDRSourceType.CSV,
                     contacts=[AISDRContactInput(raw={"empty": True})],
@@ -169,7 +170,7 @@ class AISDRTests(unittest.TestCase):
 
     def test_dashboard_returns_sdr_metrics_and_contact_rows(self) -> None:
         with Session(self.engine) as db:
-            response = AISDRIngestionService(db).ingest_contacts(
+            response = AISDRIngestionService(db, TEST_USER_ID).ingest_contacts(
                 AISDRImportCreate(
                     source_type=AISDRSourceType.EXCEL,
                     contacts=[
@@ -197,7 +198,7 @@ class AISDRTests(unittest.TestCase):
             first_lead.lead_status = "interested"
             db.commit()
 
-            dashboard = AISDRDashboardService(db).dashboard(industry="Healthcare")
+            dashboard = AISDRDashboardService(db, TEST_USER_ID).dashboard(industry="Healthcare")
 
             self.assertEqual(dashboard.stats.total_contacts, 2)
             self.assertEqual(dashboard.stats.ready_to_call, 1)
@@ -238,7 +239,7 @@ class AISDRTests(unittest.TestCase):
             db.add_all([older, newer])
             db.commit()
 
-            service = AISDRDashboardService(db)
+            service = AISDRDashboardService(db, TEST_USER_ID)
             compiled = str(service._base_query().compile(dialect=postgresql.dialect())).lower()
             profile = service.get_contact(lead.id)
 
@@ -517,7 +518,7 @@ class AISDRTests(unittest.TestCase):
 
     def test_bulk_delete_archives_contacts_out_of_default_dashboard(self) -> None:
         with Session(self.engine) as db:
-            response = AISDRIngestionService(db).ingest_contacts(
+            response = AISDRIngestionService(db, TEST_USER_ID).ingest_contacts(
                 AISDRImportCreate(
                     source_type=AISDRSourceType.MANUAL_ENTRY,
                     contacts=[
@@ -532,8 +533,8 @@ class AISDRTests(unittest.TestCase):
             lead_id = response.records[0].crm_lead_id
             assert lead_id is not None
 
-            result = AISDRDashboardService(db).archive_contacts([lead_id], actor="QA")
-            dashboard = AISDRDashboardService(db).dashboard()
+            result = AISDRDashboardService(db, TEST_USER_ID).archive_contacts([lead_id], actor="QA")
+            dashboard = AISDRDashboardService(db, TEST_USER_ID).dashboard()
             archived = db.get(Lead, lead_id)
 
             self.assertEqual(result.requested, 1)
@@ -548,7 +549,7 @@ class AISDRTests(unittest.TestCase):
 
     def test_get_contact_returns_single_sdr_profile(self) -> None:
         with Session(self.engine) as db:
-            response = AISDRIngestionService(db).ingest_contacts(
+            response = AISDRIngestionService(db, TEST_USER_ID).ingest_contacts(
                 AISDRImportCreate(
                     source_type=AISDRSourceType.REST_API,
                     contacts=[
@@ -565,7 +566,7 @@ class AISDRTests(unittest.TestCase):
             lead_id = response.records[0].crm_lead_id
             assert lead_id is not None
 
-            profile = AISDRDashboardService(db).get_contact(lead_id)
+            profile = AISDRDashboardService(db, TEST_USER_ID).get_contact(lead_id)
 
             self.assertIsNotNone(profile)
             assert profile is not None

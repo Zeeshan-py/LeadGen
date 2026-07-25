@@ -32,16 +32,19 @@ Current integration tests use SQLite and service-level execution. Recommended ad
 Smoke checklist:
 
 1. Load dashboard.
-2. Start lead generation.
-3. Watch SSE progress.
-4. Open CRM.
-5. Add note/tag/follow-up.
-6. Regenerate outreach.
-7. Send test email.
-8. Sync Gmail replies.
-9. Open AI SDR dashboard.
-10. Open AI Calling Workspace.
-11. Start AI SDR conversation API session.
+2. Sign up with email/password.
+3. Log out and log back in.
+4. Start lead generation.
+5. Watch SSE progress.
+6. Open CRM.
+7. Add note/tag/follow-up.
+8. Regenerate outreach.
+9. Send test email.
+10. Sync Gmail replies.
+11. Open AI SDR dashboard.
+12. Open AI Calling Workspace.
+13. Start AI SDR conversation API session.
+14. Confirm a second user cannot see the first user's leads, campaigns, CRM records, analytics, or AI SDR imports.
 
 ## Regression Tests
 
@@ -66,7 +69,10 @@ Recommended scenarios:
 
 ## Security Tests
 
-- Verify production Basic Auth.
+- Verify email/password auth, logout, refresh, forgot/reset password, and OAuth callbacks.
+- Verify protected routes redirect to login.
+- Verify user A cannot access user B records by changing IDs in URLs/API payloads.
+- Verify CSRF rejection for unsafe cookie-authenticated API calls without `X-CSRF-Token`.
 - Verify CORS restrictions.
 - Confirm secrets are masked.
 - Test invalid Gmail/Sheets credentials.

@@ -12,13 +12,14 @@ from sqlalchemy.orm import Session
 from app.crm import _get_lead, _lead_detail, update_crm_lead
 from app.database import Base
 from app.gmail import _message_bodies
-from app.models import CrmUser, EmailMessage, Lead, LeadNote
+from app.models import CrmUser, EmailMessage, Lead, LeadNote, User
 from app.schemas import CrmLeadUpdate
 from app.services.crm import (
     change_crm_stage,
     record_crm_activity,
     replace_lead_tags,
 )
+from tests import TEST_USER_ID
 
 
 class CrmTests(unittest.TestCase):
@@ -77,7 +78,7 @@ class CrmTests(unittest.TestCase):
             )
             db.commit()
 
-            detail = _lead_detail(_get_lead(db, lead.id))
+            detail = _lead_detail(_get_lead(db, lead.id, TEST_USER_ID))
 
             self.assertEqual(detail.crm_stage, "interested")
             self.assertEqual(detail.assigned_user.name, "Andy Manager")
@@ -90,6 +91,7 @@ class CrmTests(unittest.TestCase):
                 lead.id,
                 CrmLeadUpdate(crm_stage="won"),
                 db,
+                current_user=User(id=TEST_USER_ID, email="owner@example.test"),
             )
             self.assertEqual(updated.crm_stage, "won")
             self.assertIn("Status changed to Won", [item.title for item in updated.activity])
