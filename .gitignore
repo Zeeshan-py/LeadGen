@@ -17,6 +17,9 @@ local/
 work/
 coverage/
 service-account.json
+client_secret_*.json
+*.apps.googleusercontent.com.json
+/Leadforage Sign in Auth.json
 /lead-generation-*.json
 *.log
 *.err

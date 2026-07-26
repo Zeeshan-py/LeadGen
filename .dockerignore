@@ -1,24 +1,78 @@
+# VCS and workspace metadata
 .git
 .github
 .agents
+.codex
 .vscode
+.idea
+
+# Environment and secrets
 .env
 .env.*
 !.env.example
-**/.venv*
-**/__pycache__
-**/*.py[cod]
-**/.pytest_cache
+service-account.json
+**/service-account.json
+client_secret_*.json
+**/client_secret_*.json
+*.apps.googleusercontent.com.json
+**/*.apps.googleusercontent.com.json
+Leadforage Sign in Auth.json
+*.pem
+*.key
+
+# Node and frontend build output
 **/node_modules
 **/.next
 **/out
+**/dist
+**/build
+.npm
+.pnpm-store
+
+# Python environments and caches
+**/.venv
+**/.venv*
+**/venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/htmlcov
+
+# Runtime data, exports, and local databases
 storage
 **/storage
+**/screenshots
+**/logs
 **/*.log
 **/*.err
 **/*.pid
+**/*.csv
+**/*.tsv
 **/*.db
-service-account.json
-**/service-account.json
-/lead-generation-*.json
-Run.docx
+**/*.sqlite
+**/*.sqlite3
+**/*.db-journal
+**/*.dump
+lead-generation-*.json
+
+# Local-only project folders not needed by the production image
+database
+design
+docs
+legacy
+local
+work
+
+# Temporary files and editor artifacts
+tmp
+temp
+*.tmp
+*.bak
+*.swp
+*.swo
+*.docx
+Thumbs.db
+.DS_Store
