@@ -50,10 +50,35 @@ class User(Base, TimestampMixin):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    gmail_connections: Mapped[list["GmailConnection"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
     )
+
+
+class GmailConnection(Base, TimestampMixin):
+    __tablename__ = "gmail_connections"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_gmail_connections_user_id"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+    )
+    gmail_email: Mapped[str] = mapped_column(String(320), default="", index=True)
+    refresh_token_encrypted: Mapped[str] = mapped_column(Text, default="")
+    scopes: Mapped[str] = mapped_column(Text, default="")
+    is_connected: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_health_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(String(500), default="")
+
+    user: Mapped[User] = relationship(back_populates="gmail_connections")
 
 
 class RefreshToken(Base):

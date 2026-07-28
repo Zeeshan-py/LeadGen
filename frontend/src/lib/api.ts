@@ -12,6 +12,7 @@ import type {
   CrmLeadList,
   CrmUser,
   GenerationJob,
+  GmailConnectionStatus,
   GoogleSheetsHealth,
   Lead,
   Outreach,
@@ -80,6 +81,22 @@ export function syncEmailStatuses() {
     "/send-email/sync-statuses",
     { method: "POST" },
   );
+}
+
+export function getGmailConnection() {
+  return request<GmailConnectionStatus>("/gmail/status");
+}
+
+export function checkGmailConnection() {
+  return request<GmailConnectionStatus>("/gmail/check", { method: "POST" });
+}
+
+export function disconnectGmail() {
+  return request<GmailConnectionStatus>("/gmail/disconnect", { method: "DELETE" });
+}
+
+export function gmailConnectUrl() {
+  return `${API_URL}/gmail/connect`;
 }
 
 export function startGeneration(payload: {

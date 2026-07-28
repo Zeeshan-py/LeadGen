@@ -44,6 +44,11 @@ curl http://localhost:8000/health/ready
 | GET | `/auth/google/callback` | Google OAuth callback. |
 | GET | `/auth/github/login` | Start GitHub OAuth. |
 | GET | `/auth/github/callback` | GitHub OAuth callback. |
+| GET | `/gmail/connect` | Start per-user Gmail OAuth connection. |
+| GET | `/gmail/callback` | Gmail OAuth callback for Email Outreach. |
+| GET | `/gmail/status` | Return the signed-in user's Gmail connection status. |
+| POST | `/gmail/check` | Validate the signed-in user's Gmail connection. |
+| DELETE | `/gmail/disconnect` | Disconnect the signed-in user's Gmail account. |
 
 Unsafe API methods require the `X-CSRF-Token` header to match the readable `leadforge_csrf` cookie when using cookie auth.
 

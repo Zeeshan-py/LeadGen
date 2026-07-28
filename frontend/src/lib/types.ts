@@ -122,6 +122,17 @@ export type GoogleSheetsHealth = {
   service_account_email: string;
 };
 
+export type GmailConnectionStatus = {
+  is_connected: boolean;
+  gmail_email: string;
+  connected_at: string | null;
+  disconnected_at: string | null;
+  scopes: string;
+  health: "connected" | "disconnected" | "ok" | "error" | string;
+  last_health_check_at: string | null;
+  last_error: string;
+};
+
 export const crmStages = [
   "new",
   "qualified",

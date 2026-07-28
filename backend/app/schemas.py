@@ -139,9 +139,19 @@ class SettingsPayload(BaseModel):
     gemini_api_key: str | None = None
     apify_api_key: str | None = None
     google_sheets_id: str | None = None
-    gmail_credentials: dict[str, Any] | None = None
     default_lead_limit: int | None = Field(default=None, ge=1, le=500)
     export_settings: dict[str, Any] | None = None
+
+
+class GmailConnectionStatus(BaseModel):
+    is_connected: bool
+    gmail_email: str = ""
+    connected_at: datetime | None = None
+    disconnected_at: datetime | None = None
+    scopes: str = ""
+    health: str = "disconnected"
+    last_health_check_at: datetime | None = None
+    last_error: str = ""
 
 
 class AnalyticsResponse(BaseModel):

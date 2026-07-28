@@ -73,13 +73,20 @@ GOOGLE_SERVICE_ACCOUNT_JSON={"type":"service_account","project_id":"..."}
 
 | Variable | Purpose | Default | Required | Security Notes |
 |---|---|---|---|---|
-| `GMAIL_CLIENT_ID` | OAuth client ID. | empty | Gmail sending | Secret-adjacent. |
-| `GMAIL_CLIENT_SECRET` | OAuth client secret. | empty | Gmail sending | Secret. |
-| `GMAIL_REFRESH_TOKEN` | OAuth refresh token. | empty | Gmail sending/sync | Secret. |
-| `GMAIL_SENDER_EMAIL` | Sender account email. | empty | Gmail sending | PII. |
+| `GMAIL_CLIENT_ID` | OAuth client ID for per-user Gmail connection. | empty | Gmail connect/send | Secret-adjacent. |
+| `GMAIL_CLIENT_SECRET` | OAuth client secret for per-user Gmail connection. | empty | Gmail connect/send | Secret. |
 | `GMAIL_REPLY_SYNC_INTERVAL_SECONDS` | Background reply sync interval. | `60` | No | Operational tuning. |
 | `AUTO_REPLY_ENABLED` | Sends threaded auto-reply on inbound reply. | `true` | No | Review before production use. |
 | `AUTO_REPLY_BODY` | Auto-reply content. | default text | No | Customer-facing copy. |
+
+Gmail refresh tokens are created when each signed-in user clicks **Connect Gmail** in Settings.
+They are encrypted in PostgreSQL in the `gmail_connections` table. Access tokens are not stored
+permanently; they are regenerated from the refresh token when sending or syncing Gmail.
+
+Authorized redirect URIs for the Gmail OAuth client:
+
+- Local Docker/backend: `http://localhost:8000/gmail/callback`
+- Railway production: `https://<your-railway-domain>/gmail/callback`
 
 ## AI SDR
 

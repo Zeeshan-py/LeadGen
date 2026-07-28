@@ -75,6 +75,7 @@ class Settings(BaseSettings):
 
     gmail_client_id: str = Field(default="", validation_alias="GMAIL_CLIENT_ID")
     gmail_client_secret: str = Field(default="", validation_alias="GMAIL_CLIENT_SECRET")
+    # Kept as ignored legacy aliases so existing Railway variables do not break settings parsing.
     gmail_refresh_token: str = Field(default="", validation_alias="GMAIL_REFRESH_TOKEN")
     gmail_sender_email: str = Field(default="", validation_alias="GMAIL_SENDER_EMAIL")
     gmail_reply_sync_interval_seconds: int = Field(default=60, validation_alias="GMAIL_REPLY_SYNC_INTERVAL_SECONDS")
@@ -133,13 +134,12 @@ class Settings(BaseSettings):
             for name, value in {
                 "GMAIL_CLIENT_ID": self.gmail_client_id,
                 "GMAIL_CLIENT_SECRET": self.gmail_client_secret,
-                "GMAIL_REFRESH_TOKEN": self.gmail_refresh_token,
             }.items()
             if not value
         ]
         if missing:
             joined = ", ".join(missing)
-            raise RuntimeError(f"Missing required Gmail environment variables: {joined}")
+            raise RuntimeError(f"Missing required Gmail OAuth environment variables: {joined}")
 
     def validate_production(self) -> None:
         if self.environment.lower() != "production":

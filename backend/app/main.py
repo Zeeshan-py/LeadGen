@@ -36,7 +36,9 @@ from .config import get_settings
 from .crm import router as crm_router
 from .database import SessionLocal, check_db, get_db
 from .email_sync import sync_replied_outreach
-from .gmail import GmailClient, GmailConfigurationError, GmailSendError
+from .gmail import GmailConfigurationError, GmailSendError
+from .gmail_connections import GmailConnectionRequiredError, get_connected_gmail_connection, gmail_client_for_user
+from .gmail_routes import router as gmail_router
 from .google_sheets import validate_google_sheets
 from .models import Analytics, Campaign, EmailMessage, Lead, LeadGenerationJob, Outreach, Setting, User
 from .runner import create_generation_job, get_job, get_job_snapshot, get_latest_job_snapshot, run_generation_job
@@ -67,6 +69,7 @@ logging.getLogger("app").setLevel(logging.INFO)
 logging.getLogger("lead_automation").setLevel(logging.INFO)
 app = FastAPI(title="LeadForge AI API", version="1.0.0")
 app.include_router(auth_router)
+app.include_router(gmail_router)
 app.include_router(crm_router)
 app.include_router(ai_sdr_router)
 
@@ -90,6 +93,7 @@ PROTECTED_API_PREFIXES = (
     "/send-email",
     "/get-analytics",
     "/settings",
+    "/gmail",
     "/health/google",
     "/crm",
     "/ai-sdr",
@@ -516,7 +520,6 @@ def send_email(
         raise HTTPException(status_code=404, detail="Outreach not found")
     try:
         effective = effective_settings(settings, db, current_user.id)
-        effective.require_gmail_credentials()
         if not outreach.lead or not outreach.lead.email.strip():
             raise RuntimeError("This lead does not have a valid email address.")
         body = str(getattr(outreach, payload.version) or "").strip()
@@ -529,13 +532,7 @@ def send_email(
             raise RuntimeError(
                 "The outreach subject line is empty. Regenerate it before sending."
             )
-        gmail = GmailClient(
-            effective.gmail_client_id,
-            effective.gmail_client_secret,
-            effective.gmail_refresh_token,
-            effective.gmail_sender_email,
-        )
-        gmail.validate_configuration()
+        gmail = gmail_client_for_user(db, effective, current_user.id)
         tracking_url = f"{effective.public_backend_url.rstrip('/')}/email/open/{outreach.tracking_id}.png"
         sent = gmail.send_email(
             outreach.lead.email,
@@ -589,6 +586,10 @@ def send_email(
         db.commit()
         db.refresh(outreach)
         return outreach
+    except GmailConnectionRequiredError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except GmailConfigurationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Email send failed for outreach %s", payload.outreach_id)
         outreach.status = "failed"
@@ -712,13 +713,15 @@ def get_settings_rows(
 ) -> dict[str, Any]:
     rows = db.scalars(select(Setting).where(Setting.user_id == current_user.id)).all()
     payload = {row.key: ("********" if row.is_secret else row.value) for row in rows}
+    gmail_connection = get_connected_gmail_connection(db, current_user.id)
     payload.update(
         {
             "default_lead_limit": settings.default_lead_limit,
             "google_sheets_id_configured": bool(settings.google_sheets_spreadsheet_id),
             "apify_configured": bool(settings.apify_api_token),
             "gemini_configured": bool(settings.gemini_api_key),
-            "gmail_configured": bool(settings.gmail_refresh_token),
+            "gmail_configured": bool(settings.gmail_client_id and settings.gmail_client_secret),
+            "gmail_connected": bool(gmail_connection),
         }
     )
     return payload
@@ -733,7 +736,6 @@ def update_settings(
     secret_map = {
         "gemini_api_key": payload.gemini_api_key,
         "apify_api_key": payload.apify_api_key,
-        "gmail_credentials": payload.gmail_credentials,
     }
     regular_map = {
         "google_sheets_id": payload.google_sheets_id,

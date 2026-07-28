@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertCircle, CheckCircle2, KeyRound, RefreshCw, Save, SlidersHorizontal } from "lucide-react";
+import { AlertCircle, CheckCircle2, KeyRound, Mail, RefreshCw, Save, SlidersHorizontal, Unplug } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -11,8 +11,16 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getGoogleSheetsHealth, getSettings, saveSettings } from "@/lib/api";
-import type { GoogleSheetsHealth } from "@/lib/types";
+import {
+  checkGmailConnection,
+  disconnectGmail,
+  getGmailConnection,
+  getGoogleSheetsHealth,
+  getSettings,
+  gmailConnectUrl,
+  saveSettings,
+} from "@/lib/api";
+import type { GmailConnectionStatus, GoogleSheetsHealth } from "@/lib/types";
 
 export default function SettingsPage() {
   const [form, setForm] = useState({
@@ -20,26 +28,38 @@ export default function SettingsPage() {
     apify_api_key: "",
     google_sheets_id: "",
     default_lead_limit: 50,
-    gmail_client_id: "",
-    gmail_client_secret: "",
-    gmail_refresh_token: "",
-    gmail_sender_email: "",
     include_screenshots: true,
   });
   const [googleHealth, setGoogleHealth] = useState<GoogleSheetsHealth | null>(null);
+  const [gmailStatus, setGmailStatus] = useState<GmailConnectionStatus | null>(null);
   const [testingGoogle, setTestingGoogle] = useState(false);
+  const [checkingGmail, setCheckingGmail] = useState(false);
+  const [disconnectingGmail, setDisconnectingGmail] = useState(false);
 
   useEffect(() => {
-    getSettings()
-      .then((settings) => {
+    Promise.all([getSettings(), getGmailConnection()])
+      .then(([settings, gmail]) => {
         setForm((prev) => ({
           ...prev,
           google_sheets_id: String((settings.google_sheets_id as { value?: string } | undefined)?.value ?? ""),
           default_lead_limit: Number(settings.default_lead_limit ?? prev.default_lead_limit),
         }));
+        setGmailStatus(gmail);
       })
       .catch((error) => toast.error(error.message));
     testGoogleConnection({ quiet: true });
+
+    const gmailResult = new URLSearchParams(window.location.search).get("gmail");
+    if (gmailResult === "connected") {
+      toast.success("Gmail connected");
+      window.history.replaceState(null, "", window.location.pathname);
+    } else if (gmailResult === "cancelled") {
+      toast.info("Gmail connection cancelled");
+      window.history.replaceState(null, "", window.location.pathname);
+    } else if (gmailResult === "error") {
+      toast.error("Gmail connection failed. Check the Railway Gmail OAuth settings.");
+      window.history.replaceState(null, "", window.location.pathname);
+    }
   }, []);
 
   async function testGoogleConnection(options: { quiet?: boolean } = {}) {
@@ -81,12 +101,6 @@ export default function SettingsPage() {
         apify_api_key: form.apify_api_key || undefined,
         google_sheets_id: form.google_sheets_id || undefined,
         default_lead_limit: form.default_lead_limit,
-        gmail_credentials: {
-          client_id: form.gmail_client_id,
-          client_secret: form.gmail_client_secret,
-          refresh_token: form.gmail_refresh_token,
-          sender_email: form.gmail_sender_email,
-        },
         export_settings: {
           include_screenshots: form.include_screenshots,
         },
@@ -94,6 +108,40 @@ export default function SettingsPage() {
       toast.success("Settings saved");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Settings save failed");
+    }
+  }
+
+  async function refreshGmailStatus() {
+    try {
+      setGmailStatus(await getGmailConnection());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gmail status failed");
+    }
+  }
+
+  async function onCheckGmail() {
+    setCheckingGmail(true);
+    try {
+      const status = await checkGmailConnection();
+      setGmailStatus(status);
+      toast.success("Gmail connection healthy");
+    } catch (error) {
+      await refreshGmailStatus();
+      toast.error(error instanceof Error ? error.message : "Gmail health check failed");
+    } finally {
+      setCheckingGmail(false);
+    }
+  }
+
+  async function onDisconnectGmail() {
+    setDisconnectingGmail(true);
+    try {
+      setGmailStatus(await disconnectGmail());
+      toast.success("Gmail disconnected");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Gmail disconnect failed");
+    } finally {
+      setDisconnectingGmail(false);
     }
   }
 
@@ -128,28 +176,56 @@ export default function SettingsPage() {
               </FieldGroup>
             </TabsContent>
             <TabsContent value="google" className="mt-6">
-              <FieldGroup>
+              <FieldGroup className="mb-6">
                 <Field>
                   <FieldLabel htmlFor="sheets">Google Sheets ID</FieldLabel>
                   <Input id="sheets" value={form.google_sheets_id} onChange={(event) => setForm((prev) => ({ ...prev, google_sheets_id: event.target.value }))} />
                 </Field>
-                <Field>
-                  <FieldLabel htmlFor="gmail-sender">Gmail Sender Email</FieldLabel>
-                  <Input id="gmail-sender" value={form.gmail_sender_email} onChange={(event) => setForm((prev) => ({ ...prev, gmail_sender_email: event.target.value }))} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="gmail-client">Gmail Client ID</FieldLabel>
-                  <Input id="gmail-client" value={form.gmail_client_id} onChange={(event) => setForm((prev) => ({ ...prev, gmail_client_id: event.target.value }))} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="gmail-secret">Gmail Client Secret</FieldLabel>
-                  <Input id="gmail-secret" type="password" value={form.gmail_client_secret} onChange={(event) => setForm((prev) => ({ ...prev, gmail_client_secret: event.target.value }))} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="gmail-refresh">Gmail Refresh Token</FieldLabel>
-                  <Input id="gmail-refresh" type="password" value={form.gmail_refresh_token} onChange={(event) => setForm((prev) => ({ ...prev, gmail_refresh_token: event.target.value }))} />
-                </Field>
               </FieldGroup>
+              <div className="rounded-lg border border-border/70 bg-secondary/25 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Mail className="size-5 text-primary" />
+                      <h3 className="font-semibold">Email Integration</h3>
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {gmailStatus?.is_connected
+                        ? "Outbound emails are sent from the connected Gmail account."
+                        : "Connect Gmail before sending outreach emails."}
+                    </p>
+                  </div>
+                  <Badge variant={gmailStatus?.is_connected ? "default" : "secondary"}>
+                    {gmailStatus?.is_connected ? "Connected" : "Not Connected"}
+                  </Badge>
+                </div>
+                <div className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+                  <StatusLine label="Gmail Address" value={gmailStatus?.gmail_email || "Not connected"} />
+                  <StatusLine label="Connected Since" value={dateTimeLabel(gmailStatus?.connected_at)} />
+                  <StatusLine label="Connection Health" value={gmailHealthLabel(gmailStatus)} />
+                </div>
+                {gmailStatus?.last_error ? (
+                  <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {gmailStatus.last_error}
+                  </p>
+                ) : null}
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button asChild>
+                    <a href={gmailConnectUrl()}>
+                      <Mail data-icon="inline-start" />
+                      {gmailStatus?.is_connected ? "Reconnect Gmail" : "Connect Gmail"}
+                    </a>
+                  </Button>
+                  <Button variant="outline" onClick={onCheckGmail} disabled={!gmailStatus?.is_connected || checkingGmail}>
+                    <RefreshCw data-icon="inline-start" className={checkingGmail ? "animate-spin" : ""} />
+                    Check Health
+                  </Button>
+                  <Button variant="outline" onClick={onDisconnectGmail} disabled={!gmailStatus?.is_connected || disconnectingGmail}>
+                    <Unplug data-icon="inline-start" />
+                    Disconnect Gmail
+                  </Button>
+                </div>
+              </div>
             </TabsContent>
             <TabsContent value="defaults" className="mt-6">
               <FieldGroup>
@@ -236,6 +312,29 @@ function StatusLine({ label, value }: { label: string; value: string }) {
       <div className="mt-1 font-medium">{value}</div>
     </div>
   );
+}
+
+function dateTimeLabel(value: string | null | undefined) {
+  if (!value) {
+    return "Not connected";
+  }
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function gmailHealthLabel(status: GmailConnectionStatus | null) {
+  if (!status?.is_connected) {
+    return "Disconnected";
+  }
+  if (status.last_error || status.health === "error") {
+    return "Needs reconnect";
+  }
+  if (status.health === "ok") {
+    return "Healthy";
+  }
+  return "Connected";
 }
 
 function googleStatusLabel(health: GoogleSheetsHealth | null) {

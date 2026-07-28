@@ -33,10 +33,11 @@ Production container behavior:
 2. Deploy from the repository root. `railway.json` pins the build to the root `Dockerfile`, which builds the static Next.js frontend and serves it from FastAPI.
 3. Do not set the Railway root directory to `backend` or `frontend` for the combined production app. Those Dockerfiles are for split deployments.
 4. Set `DATABASE_URL` from the Railway PostgreSQL service.
-5. Add Apify, Gemini, Gmail, Google, and AI SDR provider secrets.
+5. Add Apify, Gemini, Gmail OAuth client, Google login, and AI SDR provider secrets.
 6. Set `APP_URL`, `FRONTEND_ORIGIN`, and `PUBLIC_URL` to the public Railway app URL.
 7. Leave `NEXT_PUBLIC_API_URL` empty for the combined container so the browser calls the same origin.
-8. Verify `/health/ready`, `/ai-sdr/health`, `/ai-sdr/`, and `/ai-sdr/call/`.
+8. Add `https://<your-railway-domain>/gmail/callback` to the Gmail OAuth client's authorized redirect URIs.
+9. Verify `/health/ready`, `/ai-sdr/health`, `/ai-sdr/`, `/ai-sdr/call/`, and Settings -> Email Integration.
 
 The root Docker build checks for `out/ai-sdr/index.html` and `out/ai-sdr/call/index.html`. If the AI SDR pages are not exported, the production image fails during build instead of deploying without the module.
 

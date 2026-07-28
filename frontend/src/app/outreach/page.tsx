@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Mail, RefreshCw, Send, ShieldCheck } from "lucide-react";
+import { Copy, Mail, RefreshCw, Send, Settings, ShieldCheck } from "lucide-react";
+import Link from "next/link";
 import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/status-badge";
@@ -17,8 +18,8 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { getLeads, getOutreach, regenerateOutreach, sendEmail, syncEmailStatuses } from "@/lib/api";
-import type { Lead, Outreach } from "@/lib/types";
+import { getGmailConnection, getLeads, getOutreach, regenerateOutreach, sendEmail, syncEmailStatuses } from "@/lib/api";
+import type { GmailConnectionStatus, Lead, Outreach } from "@/lib/types";
 
 const versions = [
   { key: "cold_email", label: "Cold Email" },
@@ -33,12 +34,14 @@ export default function OutreachPage() {
   const [version, setVersion] = useState<(typeof versions)[number]["key"]>("cold_email");
   const [sending, setSending] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [gmailStatus, setGmailStatus] = useState<GmailConnectionStatus | null>(null);
 
   useEffect(() => {
-    Promise.all([getOutreach(), getLeads({ limit: "500" })])
-      .then(([outreachRows, leadRows]) => {
+    Promise.all([getOutreach(), getLeads({ limit: "500" }), getGmailConnection()])
+      .then(([outreachRows, leadRows, gmail]) => {
         setOutreach(outreachRows);
         setLeads(leadRows);
+        setGmailStatus(gmail);
         setSelectedId(outreachRows[0]?.id ?? "");
       })
       .catch((error) => toast.error(error.message));
@@ -56,6 +59,10 @@ export default function OutreachPage() {
 
   async function onSend() {
     if (!selected) return;
+    if (!gmailStatus?.is_connected) {
+      toast.error("Please connect your Gmail account before sending emails.");
+      return;
+    }
     if (!body.trim()) {
       toast.error("The selected draft is empty. Regenerate it before sending.");
       return;
@@ -142,10 +149,29 @@ export default function OutreachPage() {
               Outreach drafts appear here after a lead generation run.
             </p>
           )}
-          <Button variant="outline" onClick={onSync}>
+          <Button variant="outline" onClick={onSync} disabled={!gmailStatus?.is_connected}>
             <ShieldCheck data-icon="inline-start" />
             Sync Replies
           </Button>
+          <div className="rounded-lg border border-border/70 bg-secondary/30 p-4 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">Gmail</p>
+                <p className="mt-1 text-muted-foreground">
+                  {gmailStatus?.is_connected ? gmailStatus.gmail_email : "Please connect your Gmail account before sending emails."}
+                </p>
+              </div>
+              <StatusBadge value={gmailStatus?.is_connected ? "connected" : "not_connected"} />
+            </div>
+            {!gmailStatus?.is_connected ? (
+              <Button asChild variant="outline" className="mt-3 w-full">
+                <Link href="/settings">
+                  <Settings data-icon="inline-start" />
+                  Connect Gmail
+                </Link>
+              </Button>
+            ) : null}
+          </div>
         </CardContent>
       </Card>
 
@@ -164,7 +190,7 @@ export default function OutreachPage() {
               <RefreshCw data-icon="inline-start" />
               {regenerating ? "Regenerating..." : "Regenerate"}
             </Button>
-            <Button onClick={onSend} disabled={!selected || !selectedLead?.email || sending}>
+            <Button onClick={onSend} disabled={!selected || !selectedLead?.email || !gmailStatus?.is_connected || sending}>
               <Send data-icon="inline-start" />
               {sending ? "Sending..." : "Send Email"}
             </Button>

@@ -266,8 +266,6 @@ Key variables:
 - `GOOGLE_SERVICE_ACCOUNT_JSON`
 - `GMAIL_CLIENT_ID`
 - `GMAIL_CLIENT_SECRET`
-- `GMAIL_REFRESH_TOKEN`
-- `GMAIL_SENDER_EMAIL`
 
 See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md).
 
@@ -288,6 +286,7 @@ The container runs Alembic migrations before starting the API and serves the exp
 4. Set `APP_URL`, `FRONTEND_ORIGIN`, and `PUBLIC_BACKEND_URL` to the public HTTPS URL.
 5. Store `GOOGLE_SERVICE_ACCOUNT_JSON` as a single-line JSON environment variable.
 6. Set `AUTH_COOKIE_SECURE=true` for HTTPS deployments.
+7. In the Gmail OAuth client, add `https://your-railway-domain/gmail/callback` as an authorized redirect URI.
 
 ## Netlify Deployment
 
@@ -308,7 +307,7 @@ LeadForge can use Netlify for a frontend-only deployment when the FastAPI backen
 - [ ] Run `alembic upgrade head`.
 - [ ] Verify `GET /health/ready`.
 - [ ] Configure Google Sheets sharing with the service account.
-- [ ] Verify Gmail OAuth sender.
+- [ ] Verify each signed-in user can connect Gmail from Settings -> Email Integration.
 - [ ] Configure log retention and database backups.
 - [ ] Keep `WEB_CONCURRENCY=1` until background jobs move to an external queue.
 - [ ] Test lead generation, CRM updates, email send, and AI SDR dashboard.

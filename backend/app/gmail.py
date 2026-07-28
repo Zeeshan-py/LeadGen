@@ -93,7 +93,7 @@ class GmailClient:
         except RefreshError as exc:
             raise GmailConfigurationError(
                 "Gmail authorization is invalid or expired. "
-                "Add a new Gmail refresh token in Settings."
+                "Reconnect Gmail in Settings."
             ) from exc
         except Exception as exc:
             raise GmailConfigurationError(
@@ -112,7 +112,7 @@ class GmailClient:
             )
         if not _valid_email(self.sender_email):
             raise GmailConfigurationError(
-                "Gmail sender email is invalid. Update it in Settings."
+                "Gmail sender email is invalid. Reconnect Gmail in Settings."
             )
 
     def send_email(

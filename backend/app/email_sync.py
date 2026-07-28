@@ -14,7 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from .config import Settings
-from .gmail import GmailClient
+from .gmail_connections import gmail_client_for_user
 from .models import Analytics, EmailMessage, Outreach
 from .services.crm import change_crm_stage, mark_contacted, record_crm_activity
 from .settings_store import effective_settings
@@ -59,27 +59,15 @@ def sync_replied_outreach(
     if not rows and not raise_on_missing_credentials:
         return result
 
-    effective = effective_settings(settings, db, user_id)
     try:
-        effective.require_gmail_credentials()
-    except RuntimeError:
-        if raise_on_missing_credentials:
-            raise
-        result.skipped = True
-        return result
-
-    try:
-        gmail = GmailClient(
-            effective.gmail_client_id,
-            effective.gmail_client_secret,
-            effective.gmail_refresh_token,
-            effective.gmail_sender_email,
-        )
+        gmail = gmail_client_for_user(db, settings, user_id)
     except Exception:
         if raise_on_missing_credentials:
             raise
         result.skipped = True
         return result
+
+    effective = effective_settings(settings, db, user_id)
     for outreach in rows:
         result.checked += 1
         if not outreach.lead:
