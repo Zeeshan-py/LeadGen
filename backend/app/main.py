@@ -110,6 +110,10 @@ UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 @app.middleware("http")
 async def protect_api_routes(request: Request, call_next):
     path = request.url.path
+    if request.method == "GET" and _wants_frontend_document(request):
+        response = _frontend_page_response(path.strip("/") or "index")
+        if response:
+            return response
     if request.method == "OPTIONS" or not _is_protected_api_path(path):
         return await call_next(request)
     if _is_public_api_path(path):
