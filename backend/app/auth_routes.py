@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import secrets
 import threading
+import logging
 from datetime import timedelta
 from typing import Any
 from urllib.parse import urlencode
@@ -14,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response,
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from .auth import (
@@ -43,6 +45,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PASSWORD_MIN_LENGTH = 8
+MAX_USER_AVATAR_URL_LENGTH = 800
+
+logger = logging.getLogger("leadforge.auth")
 
 _rate_lock = threading.Lock()
 _rate_events: dict[str, list[float]] = {}
@@ -301,37 +306,68 @@ def google_callback(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RedirectResponse:
+    if not settings.google_oauth_client_id or not settings.google_oauth_client_secret:
+        logger.error("Google OAuth callback received while Google OAuth is not configured")
+        raise HTTPException(status_code=503, detail="Google OAuth is not configured")
+    if not code:
+        logger.warning("Google OAuth callback missing authorization code")
+        raise HTTPException(status_code=400, detail="Google authentication was cancelled or failed")
+
     _validate_oauth_state(request, state)
-    with httpx.Client(timeout=15) as client:
-        token_response = client.post(
-            "https://oauth2.googleapis.com/token",
-            data={
-                "code": code,
-                "client_id": settings.google_oauth_client_id,
-                "client_secret": settings.google_oauth_client_secret,
-                "redirect_uri": settings.oauth_redirect_uri("google"),
-                "grant_type": "authorization_code",
-            },
+    redirect_uri = settings.oauth_redirect_uri("google")
+    try:
+        with httpx.Client(timeout=15) as client:
+            token_response = client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code": code,
+                    "client_id": settings.google_oauth_client_id,
+                    "client_secret": settings.google_oauth_client_secret,
+                    "redirect_uri": redirect_uri,
+                    "grant_type": "authorization_code",
+                },
+            )
+            token_response.raise_for_status()
+            access_token = token_response.json().get("access_token")
+            if not access_token:
+                logger.error("Google OAuth token response did not include an access token")
+                raise HTTPException(status_code=502, detail="Google authentication failed")
+
+            user_response = client.get(
+                "https://openidconnect.googleapis.com/v1/userinfo",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            user_response.raise_for_status()
+            profile = user_response.json()
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "Google OAuth provider request failed: status=%s endpoint=%s redirect_uri=%s response=%s",
+            exc.response.status_code,
+            exc.request.url,
+            redirect_uri,
+            exc.response.text[:500],
         )
-        token_response.raise_for_status()
-        access_token = token_response.json().get("access_token")
-        user_response = client.get(
-            "https://openidconnect.googleapis.com/v1/userinfo",
-            headers={"Authorization": f"Bearer {access_token}"},
+        raise HTTPException(status_code=502, detail="Google authentication failed") from exc
+    except httpx.RequestError as exc:
+        logger.warning("Google OAuth provider request error: endpoint=%s error=%s", exc.request.url, exc)
+        raise HTTPException(status_code=502, detail="Google authentication failed") from exc
+
+    try:
+        user = _upsert_oauth_user(
+            db,
+            provider="google",
+            provider_id=str(profile.get("sub") or ""),
+            email=str(profile.get("email") or ""),
+            full_name=str(profile.get("name") or ""),
+            avatar_url=str(profile.get("picture") or ""),
+            is_verified=bool(profile.get("email_verified")),
+            settings=settings,
         )
-        user_response.raise_for_status()
-        profile = user_response.json()
-    user = _upsert_oauth_user(
-        db,
-        provider="google",
-        provider_id=str(profile.get("sub") or ""),
-        email=str(profile.get("email") or ""),
-        full_name=str(profile.get("name") or ""),
-        avatar_url=str(profile.get("picture") or ""),
-        is_verified=bool(profile.get("email_verified")),
-        settings=settings,
-    )
-    return _oauth_session_redirect(db, user, request, settings)
+        return _oauth_session_redirect(db, user, request, settings)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("Google OAuth user persistence failed")
+        raise HTTPException(status_code=500, detail="Could not complete Google login") from exc
 
 
 @router.get("/github/login")
@@ -463,7 +499,7 @@ def _upsert_oauth_user(
     user.full_name = full_name.strip() or user.full_name or clean_email.split("@", 1)[0]
     user.provider = provider
     user.provider_id = provider_id
-    user.avatar_url = avatar_url
+    user.avatar_url = _safe_avatar_url(avatar_url)
     user.is_verified = is_verified
     apply_admin_flag(user, settings)
     db.add(user)
@@ -521,6 +557,18 @@ def _safe_next(value: str) -> str:
     if not candidate.startswith("/") or candidate.startswith("//") or "://" in candidate:
         return "/dashboard"
     return candidate
+
+
+def _safe_avatar_url(value: str) -> str:
+    avatar_url = value.strip()
+    if len(avatar_url) <= MAX_USER_AVATAR_URL_LENGTH:
+        return avatar_url
+    logger.info(
+        "OAuth avatar URL exceeded storage limit and was omitted: length=%s max=%s",
+        len(avatar_url),
+        MAX_USER_AVATAR_URL_LENGTH,
+    )
+    return ""
 
 
 def _github_primary_email(rows: Any) -> str:

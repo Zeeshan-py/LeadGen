@@ -5,8 +5,13 @@ from __future__ import annotations
 import unittest
 from urllib.parse import parse_qs, urlparse
 
-from app.auth_routes import google_login
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
+from app.auth_routes import _upsert_oauth_user, google_login
 from app.config import Settings
+from app.database import Base
+from app.models import User
 
 
 class GoogleOAuthSeparationTests(unittest.TestCase):
@@ -33,6 +38,47 @@ class GoogleOAuthSeparationTests(unittest.TestCase):
             ["https://leadforage.up.railway.app/auth/google/callback"],
         )
         self.assertEqual(query["scope"], ["openid email profile"])
+
+    def test_google_login_accepts_compatibility_aliases(self) -> None:
+        settings = Settings(
+            _env_file=None,
+            GOOGLE_CLIENT_ID="google-login-client",
+            GOOGLE_CLIENT_SECRET="google-login-secret",
+            GOOGLE_REDIRECT_URI="https://leadforage.up.railway.app/auth/google/callback",
+        )
+
+        response = google_login(request=None, next="/dashboard", settings=settings)
+
+        query = parse_qs(urlparse(response.headers["location"]).query)
+        self.assertEqual(query["client_id"], ["google-login-client"])
+        self.assertEqual(
+            query["redirect_uri"],
+            ["https://leadforage.up.railway.app/auth/google/callback"],
+        )
+
+    def test_oauth_upsert_omits_avatar_urls_that_exceed_storage_limit(self) -> None:
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(engine)
+
+        with Session(engine) as db:
+            user = _upsert_oauth_user(
+                db,
+                provider="google",
+                provider_id="google-user-id",
+                email="oauth-user@example.test",
+                full_name="OAuth User",
+                avatar_url="https://lh3.googleusercontent.com/" + ("a" * 1000),
+                is_verified=True,
+                settings=Settings(_env_file=None),
+            )
+            db.commit()
+
+            saved = db.scalar(select(User).where(User.id == user.id))
+
+        self.assertIsNotNone(saved)
+        self.assertEqual(saved.avatar_url, "")
+        self.assertEqual(saved.email, "oauth-user@example.test")
+        self.assertEqual(saved.provider, "google")
 
 
 if __name__ == "__main__":

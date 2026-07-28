@@ -32,7 +32,7 @@ class Settings(BaseSettings):
         default="http://localhost:8000",
         validation_alias=AliasChoices("PUBLIC_URL", "PUBLIC_BACKEND_URL"),
     )
-    jwt_secret_key: str = Field(default="", validation_alias="JWT_SECRET_KEY")
+    jwt_secret_key: str = Field(default="", validation_alias=AliasChoices("JWT_SECRET_KEY", "SESSION_SECRET"))
     jwt_issuer: str = Field(default="leadforge", validation_alias="JWT_ISSUER")
     access_token_minutes: int = Field(default=15, validation_alias="ACCESS_TOKEN_MINUTES")
     refresh_token_days: int = Field(default=30, validation_alias="REFRESH_TOKEN_DAYS")
@@ -42,9 +42,18 @@ class Settings(BaseSettings):
     auth_cookie_domain: str = Field(default="", validation_alias="AUTH_COOKIE_DOMAIN")
     admin_email: str = Field(default="", validation_alias="ADMIN_EMAIL")
     admin_password: str = Field(default="", validation_alias="ADMIN_PASSWORD")
-    google_oauth_client_id: str = Field(default="", validation_alias="GOOGLE_OAUTH_CLIENT_ID")
-    google_oauth_client_secret: str = Field(default="", validation_alias="GOOGLE_OAUTH_CLIENT_SECRET")
-    google_oauth_redirect_uri: str = Field(default="", validation_alias="GOOGLE_OAUTH_REDIRECT_URI")
+    google_oauth_client_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_CLIENT_ID"),
+    )
+    google_oauth_client_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices("GOOGLE_OAUTH_CLIENT_SECRET", "GOOGLE_CLIENT_SECRET"),
+    )
+    google_oauth_redirect_uri: str = Field(
+        default="",
+        validation_alias=AliasChoices("GOOGLE_OAUTH_REDIRECT_URI", "GOOGLE_REDIRECT_URI"),
+    )
     github_oauth_client_id: str = Field(default="", validation_alias="GITHUB_OAUTH_CLIENT_ID")
     github_oauth_client_secret: str = Field(default="", validation_alias="GITHUB_OAUTH_CLIENT_SECRET")
     github_oauth_redirect_uri: str = Field(default="", validation_alias="GITHUB_OAUTH_REDIRECT_URI")
