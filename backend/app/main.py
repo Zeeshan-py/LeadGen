@@ -705,12 +705,12 @@ def get_analytics(
     )
 
 
-@app.get("/settings")
+@app.get("/settings", response_model=None)
 def get_settings_rows(
     request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> dict[str, Any] | FileResponse:
+) -> Any:
     if _wants_frontend_document(request):
         response = _frontend_page_response("settings")
         if response:
