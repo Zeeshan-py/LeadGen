@@ -207,4 +207,4 @@ def _gmail_status(connection: GmailConnection | None, *, health: str | None = No
 
 
 def _settings_redirect(settings: Settings, status: str) -> RedirectResponse:
-    return RedirectResponse(f"{settings.frontend_origin.rstrip('/')}/settings?gmail={status}")
+    return RedirectResponse(f"{settings.frontend_origin.rstrip('/')}/settings/?gmail={status}")

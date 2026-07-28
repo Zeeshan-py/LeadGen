@@ -21,8 +21,7 @@ from typing import Any
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-from fastapi.responses import StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session, joinedload
@@ -708,9 +707,15 @@ def get_analytics(
 
 @app.get("/settings")
 def get_settings_rows(
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
-) -> dict[str, Any]:
+) -> dict[str, Any] | FileResponse:
+    if _wants_frontend_document(request):
+        response = _frontend_page_response("settings")
+        if response:
+            return response
+
     rows = db.scalars(select(Setting).where(Setting.user_id == current_user.id)).all()
     payload = {row.key: ("********" if row.is_secret else row.value) for row in rows}
     gmail_connection = get_connected_gmail_connection(db, current_user.id)
@@ -785,6 +790,23 @@ def _is_public_api_path(path: str) -> bool:
     return path in PUBLIC_API_EXACT_PATHS or any(
         path == prefix or path.startswith(f"{prefix}/") for prefix in PUBLIC_API_PREFIXES
     )
+
+
+def _wants_frontend_document(request: Request) -> bool:
+    accept = request.headers.get("accept", "").lower()
+    sec_fetch_dest = request.headers.get("sec-fetch-dest", "").lower()
+    return sec_fetch_dest == "document" or ("text/html" in accept and "application/json" not in accept)
+
+
+def _frontend_page_response(page: str) -> FileResponse | None:
+    static_dir = settings.frontend_static_dir
+    page_file = static_dir / page.strip("/") / "index.html"
+    if page_file.is_file():
+        return FileResponse(page_file)
+    index_file = static_dir / "index.html"
+    if index_file.is_file():
+        return FileResponse(index_file)
+    return None
 
 
 def base64_pixel() -> bytes:
