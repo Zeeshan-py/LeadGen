@@ -118,6 +118,24 @@ export default function LandingPage() {
           </CardContent>
         </Card>
       </section>
+
+      <footer className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 border-t border-border/70 px-4 py-6 text-sm text-muted-foreground md:px-6">
+        <p>LeadForge AI</p>
+        <nav className="flex flex-wrap items-center gap-4">
+          <Link className="hover:text-foreground" href="/about">
+            About
+          </Link>
+          <Link className="hover:text-foreground" href="/privacy">
+            Privacy
+          </Link>
+          <Link className="hover:text-foreground" href="/terms">
+            Terms
+          </Link>
+          <Link className="hover:text-foreground" href="/contact">
+            Contact
+          </Link>
+        </nav>
+      </footer>
     </main>
   );
 }

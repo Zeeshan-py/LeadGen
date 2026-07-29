@@ -7,7 +7,17 @@ import { BrainCircuit } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/lib/auth";
 
-const publicRoutes = new Set(["/", "/login", "/signup", "/forgot-password", "/reset-password"]);
+const publicRoutes = new Set([
+  "/",
+  "/login",
+  "/signup",
+  "/forgot-password",
+  "/reset-password",
+  "/privacy",
+  "/terms",
+  "/contact",
+  "/about",
+]);
 const authRoutes = new Set(["/login", "/signup", "/forgot-password", "/reset-password"]);
 
 export function RouteShell({ children }: { children: React.ReactNode }) {
