@@ -81,6 +81,7 @@ async def start_outbound_call(
             contact_id=payload.contact_id,
             objective=payload.objective,
             actor=payload.actor,
+            user_id=current_user.id,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -107,6 +108,7 @@ async def start_manual_bridge_call(
             business_name=payload.business_name,
             owner_number=payload.owner_phone,
             actor=payload.actor,
+            user_id=current_user.id,
         )
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
@@ -174,6 +176,7 @@ async def start_custom_target_call(
             contact_id=lead_id,
             objective=objective,
             actor=actor,
+            user_id=current_user.id,
         )
         contact = AISDRDashboardService(db, current_user.id).get_contact(lead_id)
         if not contact:
@@ -286,7 +289,7 @@ async def complete_call(
 @router.api_route("/calls/twilio/voice", methods=["GET", "POST"])
 async def twilio_voice_response(call_id: str, request: Request) -> Response:
     body = await request.body()
-    _validate_twilio_request(request, body)
+    _validate_twilio_request(request, body, call_id=call_id)
     try:
         twiml = default_calling_orchestrator.build_voice_response(call_id)
     except LookupError as exc:
@@ -301,7 +304,7 @@ async def twilio_status_callback(
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
     body = await request.body()
-    _validate_twilio_request(request, body)
+    _validate_twilio_request(request, body, call_id=call_id)
     payload = _request_payload(request, body)
     session = await default_calling_orchestrator.handle_status_update(
         db,
@@ -317,7 +320,7 @@ async def twilio_status_callback(
 @router.api_route("/calls/twilio/manual-bridge", methods=["GET", "POST"])
 async def twilio_manual_bridge_response(call_id: str, request: Request) -> Response:
     body = await request.body()
-    _validate_twilio_request(request, body)
+    _validate_twilio_request(request, body, call_id=call_id)
     try:
         twiml = default_calling_orchestrator.build_manual_bridge_response(call_id)
     except LookupError as exc:
@@ -328,7 +331,7 @@ async def twilio_manual_bridge_response(call_id: str, request: Request) -> Respo
 @router.post("/calls/twilio/manual-bridge/status")
 async def twilio_manual_bridge_status(call_id: str, request: Request) -> dict[str, str]:
     body = await request.body()
-    _validate_twilio_request(request, body)
+    _validate_twilio_request(request, body, call_id=call_id)
     payload = _request_payload(request, body)
     default_calling_orchestrator.handle_manual_bridge_status(call_id, payload)
     return {"status": "ok"}
@@ -629,11 +632,17 @@ def _request_payload(request: Request, body: bytes) -> dict[str, str]:
     return {key: value for key, value in parse_qsl(text, keep_blank_values=True)}
 
 
-def _validate_twilio_request(request: Request, body: bytes) -> None:
+def _validate_twilio_request(request: Request, body: bytes, *, call_id: str = "") -> None:
     if not settings.twilio_validate_signature:
         return
-    if not settings.twilio_auth_token:
-        raise HTTPException(status_code=503, detail="Twilio auth token is not configured")
+    auth_token = ""
+    if call_id:
+        try:
+            auth_token = default_calling_orchestrator.twilio_auth_token_for_call(call_id)
+        except LookupError:
+            auth_token = ""
+    if not auth_token:
+        raise HTTPException(status_code=503, detail="Twilio call credentials are not available")
     signature = request.headers.get("X-Twilio-Signature", "")
     if not signature:
         raise HTTPException(status_code=401, detail="Missing Twilio signature")
@@ -641,7 +650,7 @@ def _validate_twilio_request(request: Request, body: bytes) -> None:
         from twilio.request_validator import RequestValidator
     except ImportError as exc:
         raise HTTPException(status_code=503, detail="Twilio package is not installed") from exc
-    validator = RequestValidator(settings.twilio_auth_token)
+    validator = RequestValidator(auth_token)
     payload = _request_payload(request, body)
     if not validator.validate(str(request.url), payload, signature):
         raise HTTPException(status_code=401, detail="Invalid Twilio signature")

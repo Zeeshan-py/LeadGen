@@ -54,6 +54,15 @@ class User(Base, TimestampMixin):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    twilio_connections: Mapped[list["TwilioConnection"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    voice_settings: Mapped["VoiceSettings | None"] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
@@ -79,6 +88,52 @@ class GmailConnection(Base, TimestampMixin):
     last_error: Mapped[str] = mapped_column(String(500), default="")
 
     user: Mapped[User] = relationship(back_populates="gmail_connections")
+
+
+class TwilioConnection(Base, TimestampMixin):
+    __tablename__ = "twilio_connections"
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+    )
+    account_sid: Mapped[str] = mapped_column(String(80), default="", index=True)
+    auth_token_encrypted: Mapped[str] = mapped_column(Text, default="")
+    phone_number: Mapped[str] = mapped_column(String(40), default="", index=True)
+    phone_sid: Mapped[str] = mapped_column(String(80), default="")
+    friendly_name: Mapped[str] = mapped_column(String(160), default="")
+    account_status: Mapped[str] = mapped_column(String(40), default="")
+    is_connected: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    disconnected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_health_check_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_error: Mapped[str] = mapped_column(String(500), default="")
+
+    user: Mapped[User] = relationship(back_populates="twilio_connections")
+
+
+class VoiceSettings(Base, TimestampMixin):
+    __tablename__ = "voice_settings"
+    __table_args__ = (UniqueConstraint("user_id", name="uq_voice_settings_user_id"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        index=True,
+    )
+    voice_provider: Mapped[str] = mapped_column(String(40), default="cartesia")
+    voice_id: Mapped[str] = mapped_column(String(160), default="")
+    voice_name: Mapped[str] = mapped_column(String(160), default="")
+    speaking_speed: Mapped[str] = mapped_column(String(20), default="normal")
+    language: Mapped[str] = mapped_column(String(20), default="en")
+    ai_greeting: Mapped[str] = mapped_column(Text, default="")
+    business_name: Mapped[str] = mapped_column(String(160), default="")
+    assistant_name: Mapped[str] = mapped_column(String(120), default="")
+    cartesia_api_key_encrypted: Mapped[str] = mapped_column(Text, default="")
+
+    user: Mapped[User] = relationship(back_populates="voice_settings")
 
 
 class RefreshToken(Base):

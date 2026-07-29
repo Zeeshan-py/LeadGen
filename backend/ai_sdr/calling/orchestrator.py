@@ -40,8 +40,10 @@ from ai_sdr.calling.session_manager import (
 from ai_sdr.calling.silence import SilenceDetector
 from ai_sdr.config import AISDRSettings, get_ai_sdr_settings
 from ai_sdr.conversation.memory_extractor import ExtractedFacts, SalesMemoryExtractor
+from app.config import get_settings as get_platform_settings
 from app.database import SessionLocal
 from app.models import Lead
+from app.twilio_connections import ai_sdr_settings_for_user
 
 
 logger = logging.getLogger(__name__)
@@ -78,6 +80,8 @@ class AISDRCallingOrchestrator:
         self.registry = registry or default_call_session_registry
         self.memory_extractor = SalesMemoryExtractor()
         self.manual_bridge_calls: dict[str, dict[str, Any]] = {}
+        self._session_settings: dict[str, AISDRSettings] = {}
+        self._session_providers: dict[str, CallingProviderStack] = {}
 
     async def start_manual_bridge_call(
         self,
@@ -88,7 +92,9 @@ class AISDRCallingOrchestrator:
         business_name: str = "",
         owner_number: str = "",
         actor: str = "",
+        user_id: str = "",
     ) -> dict[str, Any]:
+        call_settings, providers = self._runtime_for_user(db, user_id=user_id)
         target_number = to_number.strip()
         contact_label = business_name.strip() or "Manual SDR target"
         if contact_id:
@@ -98,25 +104,28 @@ class AISDRCallingOrchestrator:
         if not target_number:
             raise ValueError("Manual SDR call target does not have a phone number.")
         target_number = _normalize_manual_phone_number(target_number, "Business phone")
-        owner_number = owner_number.strip() or self.settings.manual_call_owner_number
+        owner_number = owner_number.strip() or call_settings.manual_call_owner_number
         owner_number = _normalize_manual_phone_number(owner_number, "Your phone number")
-        if self.settings.calling_mode != "mock":
-            self.settings.require_manual_bridge_credentials(owner_number)
+        if call_settings.calling_mode != "mock":
+            call_settings.require_manual_bridge_credentials(owner_number)
         call_id = f"manual-{uuid.uuid4()}"
-        actor = actor.strip() or self.settings.default_actor
+        actor = actor.strip() or call_settings.default_actor
+        self._session_settings[call_id] = call_settings
+        self._session_providers[call_id] = providers
         request = OutboundCallRequest(
             call_id=call_id,
             contact_id=contact_id or "manual-target",
             to_number=owner_number,
-            from_number=self.settings.call_from_number,
-            voice_webhook_url=self.settings.manual_bridge_webhook_url(call_id),
-            status_callback_url=self.settings.manual_bridge_status_callback_url(call_id),
+            from_number=call_settings.call_from_number,
+            voice_webhook_url=call_settings.manual_bridge_webhook_url(call_id),
+            status_callback_url=call_settings.manual_bridge_status_callback_url(call_id),
             media_stream_url="",
             metadata={
                 "manual_bridge": True,
                 "target_number": target_number,
                 "business_name": contact_label,
                 "actor": actor,
+                "from_number": call_settings.call_from_number,
             },
         )
         self.manual_bridge_calls[call_id] = {
@@ -125,13 +134,14 @@ class AISDRCallingOrchestrator:
             "business_name": contact_label,
             "owner_number": owner_number,
             "target_number": target_number,
+            "from_number": call_settings.call_from_number,
             "status": "queued",
             "provider_call_id": "",
             "created_at": utc_now().isoformat(),
             "actor": actor,
         }
         try:
-            result = await self.providers.telephony.start_outbound_call(request)
+            result = await providers.telephony.start_outbound_call(request)
         except ProviderError:
             self.manual_bridge_calls[call_id]["status"] = "failed"
             self.manual_bridge_calls[call_id]["updated_at"] = utc_now().isoformat()
@@ -163,12 +173,14 @@ class AISDRCallingOrchestrator:
         target_number = str(bridge.get("target_number") or "")
         if not target_number:
             raise LookupError("Manual SDR bridge call does not have a target number.")
-        builder = getattr(self.providers.telephony, "build_manual_bridge_response", None)
+        providers = self._providers_for_call(call_id)
+        caller_id = str(bridge.get("from_number") or self._settings_for_call(call_id).call_from_number)
+        builder = getattr(providers.telephony, "build_manual_bridge_response", None)
         if callable(builder):
-            return str(builder(target_number=target_number, caller_id=self.settings.call_from_number))
+            return str(builder(target_number=target_number, caller_id=caller_id))
         return (
             '<?xml version="1.0" encoding="UTF-8"?>'
-            f'<Response><Dial callerId="{self.settings.call_from_number}"><Number>{target_number}</Number></Dial></Response>'
+            f'<Response><Dial callerId="{caller_id}"><Number>{target_number}</Number></Dial></Response>'
         )
 
     def handle_manual_bridge_status(self, call_id: str, payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -188,11 +200,13 @@ class AISDRCallingOrchestrator:
         contact_id: str,
         objective: str = "",
         actor: str = "",
+        user_id: str = "",
     ) -> AISDRCallSession:
-        if not self.settings.calling_enabled:
+        call_settings, providers = self._runtime_for_user(db, user_id=user_id)
+        if not call_settings.calling_enabled:
             raise RuntimeError("AI SDR calling is disabled.")
-        if self.settings.calling_mode != "mock":
-            self.settings.require_calling_credentials()
+        if call_settings.calling_mode != "mock":
+            call_settings.require_calling_credentials()
 
         lead = db.get(Lead, contact_id)
         if not lead:
@@ -202,22 +216,24 @@ class AISDRCallingOrchestrator:
 
         session = self.registry.create(
             contact_id=lead.id,
-            objective=(objective.strip() or self.settings.call_default_objective),
-            telephony_provider=self.providers.telephony.name,
-            llm_provider=self.providers.llm.name,
-            speech_provider=self.providers.speech.name,
+            objective=(objective.strip() or call_settings.call_default_objective),
+            telephony_provider=providers.telephony.name,
+            llm_provider=providers.llm.name,
+            speech_provider=providers.speech.name,
         )
+        self._session_settings[session.id] = call_settings
+        self._session_providers[session.id] = providers
         session.status = "queued"
-        actor = actor.strip() or self.settings.default_actor
+        actor = actor.strip() or call_settings.default_actor
         AISDRCallCRMGateway(db).record_call_started(lead, session, actor=actor)
         request = OutboundCallRequest(
             call_id=session.id,
             contact_id=lead.id,
             to_number=lead.phone,
-            from_number=self.settings.call_from_number,
-            voice_webhook_url=self.settings.voice_webhook_url(session.id),
-            status_callback_url=self.settings.status_callback_url(session.id),
-            media_stream_url=self.settings.media_stream_url(session.id),
+            from_number=call_settings.call_from_number,
+            voice_webhook_url=call_settings.voice_webhook_url(session.id),
+            status_callback_url=call_settings.status_callback_url(session.id),
+            media_stream_url=call_settings.media_stream_url(session.id),
             metadata={
                 "business_name": lead.business_name,
                 "industry": lead.business_type,
@@ -225,7 +241,7 @@ class AISDRCallingOrchestrator:
                 "website": lead.website,
             },
         )
-        result = await self.providers.telephony.start_outbound_call(request)
+        result = await providers.telephony.start_outbound_call(request)
         self.registry.bind_provider_call(session, result.provider_call_id)
         session.status = result.status
         session.updated_at = utc_now()
@@ -243,9 +259,10 @@ class AISDRCallingOrchestrator:
         session = self.registry.get(call_id)
         if not session:
             raise LookupError("AI SDR call session not found.")
-        return self.providers.telephony.build_voice_response(
+        call_settings = self._settings_for_call(call_id)
+        return self._providers_for_call(call_id).telephony.build_voice_response(
             call_id=call_id,
-            media_stream_url=self.settings.media_stream_url(call_id),
+            media_stream_url=call_settings.media_stream_url(call_id),
         )
 
     async def handle_status_update(
@@ -256,10 +273,12 @@ class AISDRCallingOrchestrator:
         payload: dict[str, Any],
         actor: str = "",
     ) -> AISDRCallSession | None:
-        update = self.providers.telephony.parse_status_update(payload)
+        providers = self._providers_for_call(call_id)
+        update = providers.telephony.parse_status_update(payload)
         session = self.registry.get(call_id) or self.registry.get_by_provider_call_id(update.provider_call_id)
         if not session:
             return None
+        call_settings = self._settings_for_call(session.id)
         if update.provider_call_id and not session.provider_call_id:
             self.registry.bind_provider_call(session, update.provider_call_id)
         session.status = update.status
@@ -270,7 +289,7 @@ class AISDRCallingOrchestrator:
             await self.complete_call(
                 db,
                 call_id=session.id,
-                actor=actor or self.settings.default_actor,
+                actor=actor or call_settings.default_actor,
                 failure_reason=update.reason if update.status != "completed" else "",
             )
         db.commit()
@@ -286,7 +305,7 @@ class AISDRCallingOrchestrator:
     ) -> AISDRCallSession:
         session = self._require_session(call_id)
         lead = self._require_lead(db, session.contact_id)
-        actor = actor.strip() or self.settings.default_actor
+        actor = actor.strip() or self._settings_for_call(call_id).default_actor
         action = action.strip().lower().replace("-", "_")
         if action == "mute":
             session.muted = True
@@ -300,7 +319,7 @@ class AISDRCallingOrchestrator:
             session.transfer_requested = True
         elif action == "hang_up":
             if session.provider_call_id:
-                await self.providers.telephony.end_call(session.provider_call_id)
+                await self._providers_for_call(call_id).telephony.end_call(session.provider_call_id)
             await self.complete_call(db, call_id=call_id, actor=actor)
         elif action == "generate_summary":
             await self.complete_call(db, call_id=call_id, actor=actor, keep_open=True)
@@ -323,7 +342,7 @@ class AISDRCallingOrchestrator:
 
         session = self._require_session(call_id)
         lead = self._require_lead(db, session.contact_id)
-        actor = actor.strip() or self.settings.default_actor
+        actor = actor.strip() or self._settings_for_call(call_id).default_actor
         segment = session.append_transcript(TranscriptSegment(role=role, text=text))
         if segment.role == "customer":
             self._remember_customer_facts(session, segment.text)
@@ -331,7 +350,7 @@ class AISDRCallingOrchestrator:
         if role == "customer" and not session.ai_paused and not session.brain.get("should_end_call"):
             context = self._reasoning_context(lead, session)
             try:
-                response = await self.providers.llm.generate_next_response(context)
+                response = await self._providers_for_call(call_id).llm.generate_next_response(context)
             except Exception as exc:
                 logger.exception(
                     "AI SDR LLM response generation failed during transcript injection; using fallback reply. call_id=%s",
@@ -356,7 +375,7 @@ class AISDRCallingOrchestrator:
     ) -> AISDRCallSession:
         session = self._require_session(call_id)
         lead = self._require_lead(db, session.contact_id)
-        actor = actor.strip() or self.settings.default_actor
+        actor = actor.strip() or self._settings_for_call(call_id).default_actor
         if failure_reason:
             AISDRCallCRMGateway(db).record_call_failed(lead, session, reason=failure_reason, actor=actor)
             db.commit()
@@ -393,7 +412,7 @@ class AISDRCallingOrchestrator:
 
         try:
             async for payload in self._websocket_payloads(websocket):
-                media_event = self.providers.telephony.parse_media_event(payload)
+                media_event = self._providers_for_call(session.id if session else call_id).telephony.parse_media_event(payload)
                 if media_event.call_id:
                     session = self._require_session(media_event.call_id)
                 if session is None:
@@ -405,10 +424,12 @@ class AISDRCallingOrchestrator:
                 if media_event.stream_id:
                     session.stream_id = media_event.stream_id
                 if media_event.event_type == "start":
-                    recognition = await self.providers.speech.create_recognition_session(call_id=session.id)
+                    providers = self._providers_for_call(session.id)
+                    call_settings = self._settings_for_call(session.id)
+                    recognition = await providers.speech.create_recognition_session(call_id=session.id)
                     silence = SilenceDetector(
-                        self.providers.speech,
-                        timeout_seconds=self.settings.call_silence_timeout_seconds,
+                        providers.speech,
+                        timeout_seconds=call_settings.call_silence_timeout_seconds,
                     )
                     transcript_task = asyncio.create_task(
                         self._consume_recognition(session, recognition, websocket, schedule_speech)
@@ -455,7 +476,11 @@ class AISDRCallingOrchestrator:
             if session is not None:
                 with SessionLocal() as db:
                     if session.status not in {"completed", "failed"}:
-                        await self.complete_call(db, call_id=session.id, actor=self.settings.default_actor)
+                        await self.complete_call(
+                            db,
+                            call_id=session.id,
+                            actor=self._settings_for_call(session.id).default_actor,
+                        )
 
     async def _consume_recognition(
         self,
@@ -476,7 +501,7 @@ class AISDRCallingOrchestrator:
                     lead,
                     session,
                     saved,
-                    actor=self.settings.default_actor,
+                    actor=self._settings_for_call(session.id).default_actor,
                 )
                 db.commit()
             if (
@@ -495,7 +520,7 @@ class AISDRCallingOrchestrator:
                 response = self._opening_ai_response(context)
             else:
                 try:
-                    response = await self.providers.llm.generate_next_response(context)
+                    response = await self._providers_for_call(session.id).llm.generate_next_response(context)
                 except Exception as exc:
                     logger.exception(
                         "AI SDR LLM response generation failed; using fallback reply. call_id=%s",
@@ -509,16 +534,16 @@ class AISDRCallingOrchestrator:
                 lead,
                 session,
                 segment,
-                actor=self.settings.default_actor,
+                actor=self._settings_for_call(session.id).default_actor,
             )
             db.commit()
         await self._send_speech(websocket, session, response.text)
         if response.should_end_call:
-            await self.providers.telephony.end_call(session.provider_call_id)
+            await self._providers_for_call(session.id).telephony.end_call(session.provider_call_id)
 
     @staticmethod
     def _opening_ai_response(context: AIReasoningContext) -> AIResponse:
-        text = f"Hi, am I speaking with someone from {context.business_name}?"
+        text = _format_ai_greeting(context)
         return AIResponse(
             text=text,
             current_goal="Confirm the call reached the right business.",
@@ -587,11 +612,11 @@ class AISDRCallingOrchestrator:
         elif _is_identity_question(latest):
             if "business_confirm" in asked_questions:
                 text = (
-                    f"This is Ava with LeadForge. I saw {context.business_name} on Google Maps "
+                    f"This is {_assistant_intro(context)}. I saw {context.business_name} on Google Maps "
                     "and could not find a proper website listed."
                 )
             else:
-                text = f"Hi, this is Ava with LeadForge. Am I speaking with someone from {context.business_name}?"
+                text = f"Hi, this is {_assistant_intro(context)}. Am I speaking with someone from {context.business_name}?"
             should_end = False
             stage = "Opening"
         elif _is_business_confirmation(latest) and "google_maps_no_website" not in asked_questions:
@@ -665,12 +690,13 @@ class AISDRCallingOrchestrator:
         if session.ai_paused or not session.stream_id:
             return
         session.ai_speaking = True
+        providers = self._providers_for_call(session.id)
         try:
-            async for audio in self.providers.speech.synthesize_stream(text=text, call_id=session.id):
+            async for audio in providers.speech.synthesize_stream(text=text, call_id=session.id):
                 if not session.ai_speaking:
                     break
                 await websocket.send_json(
-                    self.providers.telephony.outbound_audio_message(stream_id=session.stream_id, audio=audio)
+                    providers.telephony.outbound_audio_message(stream_id=session.stream_id, audio=audio)
                 )
         except asyncio.CancelledError:
             session.ai_speaking = False
@@ -682,15 +708,16 @@ class AISDRCallingOrchestrator:
 
     async def _interrupt_ai(self, websocket: WebSocket, session: AISDRCallSession) -> None:
         session.ai_speaking = False
+        providers = self._providers_for_call(session.id)
         if session.stream_id:
-            await websocket.send_json(self.providers.telephony.clear_audio_message(stream_id=session.stream_id))
+            await websocket.send_json(providers.telephony.clear_audio_message(stream_id=session.stream_id))
         with SessionLocal() as db:
             lead = self._require_lead(db, session.contact_id)
             AISDRCallCRMGateway(db).record_control_event(
                 lead,
                 session,
                 action="interruption_detected",
-                actor=self.settings.default_actor,
+                actor=self._settings_for_call(session.id).default_actor,
             )
             db.commit()
 
@@ -699,14 +726,18 @@ class AISDRCallingOrchestrator:
         session.started_at = session.started_at or utc_now()
         with SessionLocal() as db:
             lead = self._require_lead(db, session.contact_id)
-            AISDRCallCRMGateway(db).record_call_connected(lead, session, actor=self.settings.default_actor)
+            AISDRCallCRMGateway(db).record_call_connected(
+                lead,
+                session,
+                actor=self._settings_for_call(session.id).default_actor,
+            )
             db.commit()
 
     async def _summarize(self, lead: Lead, session: AISDRCallSession) -> CallOutcome:
         if session.outcome:
             return session.outcome
         try:
-            return await self.providers.llm.summarize_call(self._reasoning_context(lead, session))
+            return await self._providers_for_call(session.id).llm.summarize_call(self._reasoning_context(lead, session))
         except ProviderError:
             raise
         except Exception as exc:
@@ -746,7 +777,38 @@ class AISDRCallingOrchestrator:
                 "asked_questions": session.memory.get("asked_questions", []),
             },
             interrupted=interrupted,
+            assistant_name=self._settings_for_call(session.id).assistant_name,
+            assistant_business_name=self._settings_for_call(session.id).assistant_business_name,
+            ai_greeting=self._settings_for_call(session.id).ai_greeting,
         )
+
+    def twilio_auth_token_for_call(self, call_id: str) -> str:
+        if call_id not in self._session_settings:
+            raise LookupError("AI SDR call session credentials not found.")
+        return self._settings_for_call(call_id).twilio_auth_token
+
+    def _runtime_for_user(self, db: Session, *, user_id: str = "") -> tuple[AISDRSettings, CallingProviderStack]:
+        if not user_id:
+            return self.settings, self.providers
+        if self.settings.calling_mode == "mock":
+            return self.settings, self.providers
+        call_settings = ai_sdr_settings_for_user(
+            db,
+            get_platform_settings(),
+            self.settings,
+            user_id=user_id,
+        )
+        return call_settings, build_calling_provider_stack(call_settings)
+
+    def _providers_for_call(self, call_id: str) -> CallingProviderStack:
+        if not call_id:
+            return self.providers
+        return self._session_providers.get(call_id) or self.providers
+
+    def _settings_for_call(self, call_id: str) -> AISDRSettings:
+        if not call_id:
+            return self.settings
+        return self._session_settings.get(call_id) or self.settings
 
     def _remember_customer_facts(self, session: AISDRCallSession, text: str) -> None:
         facts = self.memory_extractor.extract(text)
@@ -857,6 +919,31 @@ def _classify_ai_question(text: str) -> str:
     ):
         return "contact_details"
     return ""
+
+
+def _format_ai_greeting(context: AIReasoningContext) -> str:
+    if context.ai_greeting.strip():
+        values = {
+            "assistant_name": context.assistant_name or "Ava",
+            "assistant_business_name": context.assistant_business_name or "LeadForge",
+            "business_name": context.business_name,
+            "owner_name": context.owner_name,
+        }
+        try:
+            return context.ai_greeting.format(**values)
+        except (KeyError, ValueError):
+            return context.ai_greeting
+    if context.assistant_name or context.assistant_business_name:
+        assistant = context.assistant_name or "Ava"
+        business = context.assistant_business_name or "LeadForge"
+        return f"Hi, this is {assistant} with {business}. Am I speaking with someone from {context.business_name}?"
+    return f"Hi, am I speaking with someone from {context.business_name}?"
+
+
+def _assistant_intro(context: AIReasoningContext) -> str:
+    assistant = context.assistant_name or "Ava"
+    business = context.assistant_business_name or "LeadForge"
+    return f"{assistant} with {business}"
 
 
 def _is_business_confirmation(text: str) -> bool:

@@ -154,6 +154,73 @@ class GmailConnectionStatus(BaseModel):
     last_error: str = ""
 
 
+class TwilioPhoneNumberOption(BaseModel):
+    phone_sid: str
+    phone_number: str
+    friendly_name: str = ""
+
+
+class TwilioConnectRequest(BaseModel):
+    account_sid: str = Field(min_length=10, max_length=80)
+    auth_token: str = Field(min_length=8, max_length=255)
+    phone_sid: str = Field(default="", max_length=80)
+    phone_number: str = Field(default="", max_length=40)
+
+    @field_validator("account_sid", "auth_token", "phone_sid", "phone_number")
+    @classmethod
+    def clean_twilio_text(cls, value: str) -> str:
+        return value.strip()
+
+
+class TwilioConnectionStatus(BaseModel):
+    is_connected: bool
+    account_sid_masked: str = ""
+    phone_number: str = ""
+    phone_sid: str = ""
+    friendly_name: str = ""
+    account_status: str = ""
+    connected_at: datetime | None = None
+    disconnected_at: datetime | None = None
+    health: str = "disconnected"
+    last_health_check_at: datetime | None = None
+    last_error: str = ""
+    requires_phone_selection: bool = False
+    phone_numbers: list[TwilioPhoneNumberOption] = Field(default_factory=list)
+
+
+VoiceSpeed = Literal["slowest", "slower", "normal", "faster", "fastest"]
+
+
+class VoiceSettingsPayload(BaseModel):
+    voice_provider: Literal["cartesia"] = "cartesia"
+    voice_id: str = Field(default="", max_length=160)
+    voice_name: str = Field(default="", max_length=160)
+    speaking_speed: VoiceSpeed = "normal"
+    language: str = Field(default="en", max_length=20)
+    ai_greeting: str = Field(default="", max_length=600)
+    business_name: str = Field(default="", max_length=160)
+    assistant_name: str = Field(default="", max_length=120)
+    cartesia_api_key: str = Field(default="", max_length=500)
+
+    @field_validator("voice_id", "voice_name", "language", "ai_greeting", "business_name", "assistant_name", "cartesia_api_key")
+    @classmethod
+    def clean_voice_text(cls, value: str) -> str:
+        return " ".join(value.strip().split()) if "\n" not in value else value.strip()
+
+
+class VoiceSettingsStatus(BaseModel):
+    voice_provider: str = "cartesia"
+    voice_id: str = ""
+    voice_name: str = ""
+    speaking_speed: VoiceSpeed = "normal"
+    language: str = "en"
+    ai_greeting: str = ""
+    business_name: str = ""
+    assistant_name: str = ""
+    has_cartesia_api_key: bool = False
+    cartesia_api_key_masked: str = ""
+
+
 class AnalyticsResponse(BaseModel):
     leads_found: int
     leads_saved: int

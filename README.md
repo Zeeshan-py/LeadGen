@@ -76,7 +76,7 @@ flowchart LR
 - Analytics for lead generation, outreach, conversion, and activity trends.
 - Independent AI SDR module with contact ingestion from CSV, Excel, Google Sheets, Manual Entry, REST API, CRM, and future integrations.
 - AI SDR dashboard with filters, bulk actions, export, and detailed profiles.
-- Full-screen AI Calling Workspace with Twilio, Gemini 2.5 Flash, Cartesia, live transcript streaming, AI Brain state, and mock fallback.
+- Full-screen AI Calling Workspace with per-user Twilio connection, Gemini 2.5 Flash, Cartesia voice settings, live transcript streaming, AI Brain state, and mock fallback.
 - AI SDR conversation engine with memory, state machine, qualification, objections, closing, and structured events.
 - Docker-first deployment with Railway/Netlify guidance.
 
@@ -91,6 +91,10 @@ LeadForge uses a simple SaaS account model:
 - Admin status is assigned only when the logged-in email matches `ADMIN_EMAIL`.
 
 Supported sign-in methods are email/password, Google OAuth, and GitHub OAuth. Refresh tokens are stored server-side, auth cookies are HttpOnly, and unsafe API writes require CSRF validation.
+
+## User-Owned Calling
+
+AI SDR calling is scoped to the signed-in account. Users connect their own Twilio account in Settings -> Voice, select an available Twilio number, and optionally store their Cartesia voice preferences and API key. Twilio auth tokens and Cartesia keys are encrypted in PostgreSQL, and calls use the authenticated user's connection instead of a shared platform Twilio account.
 
 ## Modules
 

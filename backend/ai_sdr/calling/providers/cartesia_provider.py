@@ -87,12 +87,19 @@ class CartesiaSpeechProvider(SpeechProvider):
             "sample_rate": self.settings.cartesia_tts_sample_rate,
         }
         with client.tts.websocket_connect() as websocket:
-            context = websocket.context(
-                model_id=self.settings.cartesia_tts_model,
-                voice={"mode": "id", "id": self.settings.cartesia_voice_id},
-                output_format=output_format,
-            )
-            context.push(text)
+            voice = {"mode": "id", "id": self.settings.cartesia_voice_id}
+            context_kwargs: dict[str, Any] = {
+                "model_id": self.settings.cartesia_tts_model,
+                "voice": voice,
+                "output_format": output_format,
+            }
+            if self.settings.cartesia_language:
+                context_kwargs["language"] = self.settings.cartesia_language
+            context = websocket.context(**context_kwargs)
+            push_kwargs: dict[str, Any] = {}
+            if self.settings.cartesia_tts_speed:
+                push_kwargs["speed"] = self.settings.cartesia_tts_speed
+            context.push(text, **push_kwargs)
             context.no_more_inputs()
             for event in context.receive():
                 audio = getattr(event, "audio", None)

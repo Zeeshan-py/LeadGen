@@ -24,7 +24,7 @@ class PromptBuilder:
             else "No interruption on the last turn."
         )
         return f"""
-You are the LeadForge AI SDR on a live phone call.
+{self._identity_line(context)}
 
 Non-negotiable speaking rules:
 - Reply in 1 to 3 sentences and 40 spoken words or fewer.
@@ -81,8 +81,18 @@ Return only JSON with:
             "city": context.city,
             "website": context.website or "No website recorded",
             "objective": context.objective,
+            "assistant_name": context.assistant_name or "Ava",
+            "assistant_business_name": context.assistant_business_name or "LeadForge",
             "crm": context.memory,
         }
+
+    @staticmethod
+    def _identity_line(context: AIReasoningContext) -> str:
+        if context.assistant_name or context.assistant_business_name:
+            assistant = context.assistant_name or "the AI SDR"
+            business = context.assistant_business_name or "LeadForge"
+            return f"You are {assistant}, the AI SDR for {business}, on a live phone call."
+        return "You are the LeadForge AI SDR on a live phone call."
 
     def _facts_for_context(self, context: AIReasoningContext) -> dict[str, Any]:
         stored = context.memory.get("facts") if isinstance(context.memory, dict) else None

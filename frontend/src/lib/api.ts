@@ -16,6 +16,9 @@ import type {
   GoogleSheetsHealth,
   Lead,
   Outreach,
+  TwilioConnectionStatus,
+  VoiceSettingsStatus,
+  VoiceSpeed,
 } from "@/lib/types";
 import { apiFetch, API_URL } from "@/lib/http";
 
@@ -97,6 +100,51 @@ export function disconnectGmail() {
 
 export function gmailConnectUrl() {
   return `${API_URL}/gmail/connect`;
+}
+
+export function getTwilioConnection() {
+  return request<TwilioConnectionStatus>("/twilio/status");
+}
+
+export function connectTwilio(payload: {
+  account_sid: string;
+  auth_token: string;
+  phone_sid?: string;
+  phone_number?: string;
+}) {
+  return request<TwilioConnectionStatus>("/twilio/connect", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function checkTwilioConnection() {
+  return request<TwilioConnectionStatus>("/twilio/check", { method: "POST" });
+}
+
+export function disconnectTwilio() {
+  return request<TwilioConnectionStatus>("/twilio/disconnect", { method: "DELETE" });
+}
+
+export function getVoiceSettings() {
+  return request<VoiceSettingsStatus>("/twilio/voice-settings");
+}
+
+export function saveVoiceSettings(payload: {
+  voice_provider: "cartesia";
+  voice_id: string;
+  voice_name: string;
+  speaking_speed: VoiceSpeed;
+  language: string;
+  ai_greeting: string;
+  business_name: string;
+  assistant_name: string;
+  cartesia_api_key?: string;
+}) {
+  return request<VoiceSettingsStatus>("/twilio/voice-settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function startGeneration(payload: {

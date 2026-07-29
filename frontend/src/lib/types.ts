@@ -133,6 +133,43 @@ export type GmailConnectionStatus = {
   last_error: string;
 };
 
+export type TwilioPhoneNumberOption = {
+  phone_sid: string;
+  phone_number: string;
+  friendly_name: string;
+};
+
+export type TwilioConnectionStatus = {
+  is_connected: boolean;
+  account_sid_masked: string;
+  phone_number: string;
+  phone_sid: string;
+  friendly_name: string;
+  account_status: string;
+  connected_at: string | null;
+  disconnected_at: string | null;
+  health: "connected" | "disconnected" | "ok" | "error" | "phone_selection_required" | string;
+  last_health_check_at: string | null;
+  last_error: string;
+  requires_phone_selection: boolean;
+  phone_numbers: TwilioPhoneNumberOption[];
+};
+
+export type VoiceSpeed = "slowest" | "slower" | "normal" | "faster" | "fastest";
+
+export type VoiceSettingsStatus = {
+  voice_provider: "cartesia" | string;
+  voice_id: string;
+  voice_name: string;
+  speaking_speed: VoiceSpeed;
+  language: string;
+  ai_greeting: string;
+  business_name: string;
+  assistant_name: string;
+  has_cartesia_api_key: boolean;
+  cartesia_api_key_masked: string;
+};
+
 export const crmStages = [
   "new",
   "qualified",

@@ -109,19 +109,26 @@ Authorized redirect URIs for the Gmail OAuth client:
 | `AI_SDR_TELEPHONY_PROVIDER` | Telephony provider implementation. | `twilio` | No | Swappable provider role. |
 | `AI_SDR_LLM_PROVIDER` | LLM provider implementation. | `gemini` | No | Swappable provider role. |
 | `AI_SDR_SPEECH_PROVIDER` | Speech provider implementation. | `cartesia` | No | Swappable provider role. |
-| `AI_SDR_CALL_FROM_NUMBER` | Twilio caller ID number. | empty | Production voice | Use an approved Twilio number. |
-| `TWILIO_ACCOUNT_SID` | Twilio API account SID. | empty | Production voice | Secret-adjacent. |
-| `TWILIO_AUTH_TOKEN` | Twilio API token and webhook signature secret. | empty | Production voice | Secret. |
+| `AI_SDR_CALL_FROM_NUMBER` | Legacy/dev Twilio caller ID fallback. | empty | Local/mock voice | Signed-in production users choose their Twilio number in Settings -> Voice. |
+| `TWILIO_ACCOUNT_SID` | Legacy/dev Twilio API account SID fallback. | empty | Local/mock voice | Do not use as the shared production account for user-initiated calls. |
+| `TWILIO_AUTH_TOKEN` | Legacy/dev Twilio API token fallback. | empty | Local/mock voice | Secret. Per-user tokens are encrypted in PostgreSQL. |
 | `TWILIO_VALIDATE_SIGNATURE` | Validates Twilio webhook signatures. | `true` | Production | Keep enabled publicly. |
 | `AI_SDR_GEMINI_MODEL` | AI SDR calling model. | `gemini-2.5-flash` | No | Cost/latency lever. |
-| `CARTESIA_API_KEY` | Cartesia API key. | empty | Production voice | Secret. |
-| `CARTESIA_VOICE_ID` | Cartesia voice ID for AI SDR speech. | empty | Production voice | Treat as provider config. |
+| `CARTESIA_API_KEY` | Legacy/dev Cartesia API key fallback. | empty | Local/mock voice | Secret. Signed-in users can store their own encrypted key in Settings -> Voice. |
+| `CARTESIA_VOICE_ID` | Legacy/dev Cartesia voice ID fallback. | empty | Local/mock voice | Per-user value can be set in Settings -> Voice. |
+| `CARTESIA_LANGUAGE` | Legacy/dev Cartesia speech language fallback. | `en` | No | Per-user value can be set in Settings -> Voice. |
+| `CARTESIA_TTS_SPEED` | Legacy/dev Cartesia speaking speed fallback. | `normal` | No | Allowed values: `slowest`, `slower`, `normal`, `faster`, `fastest`. |
 | `CARTESIA_TTS_MODEL` | Cartesia TTS model. | `sonic-3.5` | No | Provider config. |
 | `CARTESIA_STT_MODEL` | Cartesia STT model. | `ink-whisper` | No | Provider config. |
 | `CARTESIA_TTS_ENCODING` | TTS audio encoding for telephony. | `pcm_mulaw` | No | Match Twilio media. |
 | `CARTESIA_STT_ENCODING` | STT audio encoding from telephony. | `pcm_mulaw` | No | Match Twilio media. |
 | `AI_SDR_CALL_SILENCE_TIMEOUT_SECONDS` | Silence window before finalizing utterances. | `1.2` | No | Tune for latency vs interruptions. |
 | `AI_SDR_CALL_MAX_DURATION_SECONDS` | Maximum planned call duration. | `1800` | No | Cost and abuse control. |
+| `AI_SDR_ASSISTANT_NAME` | Legacy/dev assistant display name fallback. | empty | No | Per-user value can be set in Settings -> Voice. |
+| `AI_SDR_ASSISTANT_BUSINESS_NAME` | Legacy/dev business name fallback. | empty | No | Per-user value can be set in Settings -> Voice. |
+| `AI_SDR_AI_GREETING` | Legacy/dev first-call greeting fallback. | empty | No | Per-user value can be set in Settings -> Voice. Supports `{assistant_name}`, `{business_name}`, `{owner_name}`. |
+
+Signed-in users connect Twilio and voice preferences from **Settings -> Voice**. The app validates their Twilio credentials with Twilio, stores the selected phone number, encrypts the Twilio auth token and Cartesia API key, and uses those user-specific credentials for outbound AI SDR calls and Twilio webhook signature validation.
 
 ## Security Guidance
 

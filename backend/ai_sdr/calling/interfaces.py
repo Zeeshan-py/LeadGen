@@ -97,6 +97,9 @@ class AIReasoningContext:
     transcript: list[TranscriptSegment]
     memory: dict[str, Any]
     interrupted: bool = False
+    assistant_name: str = ""
+    assistant_business_name: str = ""
+    ai_greeting: str = ""
 
 
 @dataclass(frozen=True)

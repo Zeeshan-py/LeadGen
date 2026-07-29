@@ -13,6 +13,7 @@ AI SDR is an independent module for sales-development workflows. It does not dep
 - Track import batches and records.
 - Provide dashboard metrics, filters, table, profile, bulk delete, and export.
 - Provide production calling through Twilio, Gemini, and Cartesia provider interfaces.
+- Use each signed-in user's connected Twilio account and preferred Cartesia voice settings for AI SDR calls.
 - Store call transcripts and outcomes in CRM.
 - Maintain conversation memory and structured events.
 
@@ -28,7 +29,7 @@ flowchart TD
     API --> Records["ai_sdr_contact_records"]
     CRM --> Dashboard["AI SDR Dashboard"]
     Dashboard --> Calling["AI Calling Workspace"]
-    Calling --> Providers["Twilio / Gemini / Cartesia"]
+    Calling --> Providers["User Twilio / Gemini / User Cartesia Voice"]
     Providers --> CRM
     Calling --> Conversation["Conversation Engine"]
 ```
@@ -42,7 +43,7 @@ flowchart TD
 5. `AISDRDashboardService` returns metrics and contact rows.
 6. Frontend opens `/ai-sdr`.
 7. User clicks Call and opens `/ai-sdr/call?contactId=<id>`.
-8. Production call sessions stream transcript and AI Brain state from the backend when providers are configured.
+8. Production call sessions stream transcript and AI Brain state from the backend when the user has connected Twilio and voice settings are configured.
 9. Mock fallback remains available for local provider-free demos.
 10. Conversation engine can start or continue sessions through `/ai-sdr/conversations`.
 
@@ -93,6 +94,12 @@ frontend/src/app/ai-sdr/
 | GET/POST | `/ai-sdr/calls/twilio/voice` | Twilio TwiML callback. |
 | POST | `/ai-sdr/calls/twilio/status` | Twilio status callback. |
 | WS | `/ai-sdr/calls/twilio/media` | Twilio Media Streams socket. |
+
+## Twilio and Voice Settings
+
+Each user connects one active Twilio account from **Settings -> Voice**. The backend validates the account SID and auth token with Twilio, requires or auto-selects one Twilio phone number, encrypts the auth token, and stores the connection on that user's account. AI SDR calls started by that user always use that user's Twilio credentials and selected caller ID.
+
+Voice settings are also stored per user. The current provider is Cartesia, with configurable voice ID, voice label, language, speaking speed, business name, assistant name, AI greeting, and an optional encrypted Cartesia API key. If a user leaves a voice field empty, the AI SDR runtime falls back to deployment defaults.
 
 ## Database Tables
 

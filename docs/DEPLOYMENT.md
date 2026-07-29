@@ -37,7 +37,8 @@ Production container behavior:
 6. Set `APP_URL`, `FRONTEND_ORIGIN`, and `PUBLIC_URL` to the public Railway app URL.
 7. Leave `NEXT_PUBLIC_API_URL` empty for the combined container so the browser calls the same origin.
 8. Add `https://<your-railway-domain>/gmail/callback` to the Gmail OAuth client's authorized redirect URIs.
-9. Verify `/health/ready`, `/ai-sdr/health`, `/ai-sdr/`, `/ai-sdr/call/`, and Settings -> Email Integration.
+9. Add `https://<your-railway-domain>/ai-sdr/calls/twilio/voice` and `https://<your-railway-domain>/ai-sdr/calls/manual-bridge/voice` as Twilio webhook URLs only if you configure them manually. User-initiated outbound calls set callback URLs automatically.
+10. Verify `/health/ready`, `/ai-sdr/health`, `/ai-sdr/`, `/ai-sdr/call/`, Settings -> Email Integration, and Settings -> Voice.
 
 The root Docker build checks for `out/ai-sdr/index.html` and `out/ai-sdr/call/index.html`. If the AI SDR pages are not exported, the production image fails during build instead of deploying without the module.
 
@@ -53,18 +54,20 @@ AI_SDR_CALLING_MODE=production
 AI_SDR_TELEPHONY_PROVIDER=twilio
 AI_SDR_LLM_PROVIDER=gemini
 AI_SDR_SPEECH_PROVIDER=cartesia
-AI_SDR_CALL_FROM_NUMBER=<your Twilio phone number>
+AI_SDR_CALL_FROM_NUMBER=
 AI_SDR_PUBLIC_WEBSOCKET_URL=wss://<your-railway-domain>
 PUBLIC_URL=https://<your-railway-domain>
 FRONTEND_ORIGIN=https://<your-railway-domain>
 NEXT_PUBLIC_API_URL=
-TWILIO_ACCOUNT_SID=<your Twilio account SID>
-TWILIO_AUTH_TOKEN=<your Twilio auth token>
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
 TWILIO_VALIDATE_SIGNATURE=true
 GEMINI_API_KEY=<your Gemini API key>
 AI_SDR_GEMINI_MODEL=gemini-2.5-flash
-CARTESIA_API_KEY=<your Cartesia API key>
-CARTESIA_VOICE_ID=<your Cartesia voice ID>
+CARTESIA_API_KEY=
+CARTESIA_VOICE_ID=
+CARTESIA_LANGUAGE=en
+CARTESIA_TTS_SPEED=normal
 CARTESIA_VERSION=2026-03-01
 CARTESIA_TTS_MODEL=sonic-3.5
 CARTESIA_STT_MODEL=ink-whisper
@@ -74,7 +77,7 @@ CARTESIA_TTS_SAMPLE_RATE=8000
 CARTESIA_STT_SAMPLE_RATE=8000
 ```
 
-`TWILIO_VALIDATE_SIGNATURE=false` is acceptable only for local mock testing. Keep it `true` on Railway.
+`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `AI_SDR_CALL_FROM_NUMBER`, `CARTESIA_API_KEY`, and `CARTESIA_VOICE_ID` are legacy/dev fallbacks. In production, each signed-in user connects their own Twilio account and voice preferences from **Settings -> Voice**. The app encrypts each user's Twilio auth token and Cartesia API key in PostgreSQL, then uses those credentials for outbound AI SDR calls and matching Twilio webhook validation. Keep `TWILIO_VALIDATE_SIGNATURE=true` on Railway.
 
 ## Netlify
 

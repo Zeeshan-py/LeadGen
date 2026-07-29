@@ -56,6 +56,7 @@ from .schemas import (
 from .services.lead_analysis import LeadAnalysisService
 from .services.crm import change_crm_stage, mark_contacted, record_crm_activity
 from .settings_store import effective_settings
+from .twilio_routes import router as twilio_router
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -69,6 +70,7 @@ logging.getLogger("lead_automation").setLevel(logging.INFO)
 app = FastAPI(title="LeadForge AI API", version="1.0.0")
 app.include_router(auth_router)
 app.include_router(gmail_router)
+app.include_router(twilio_router)
 app.include_router(crm_router)
 app.include_router(ai_sdr_router)
 
@@ -93,6 +95,7 @@ PROTECTED_API_PREFIXES = (
     "/get-analytics",
     "/settings",
     "/gmail",
+    "/twilio",
     "/health/google",
     "/crm",
     "/ai-sdr",
@@ -105,12 +108,20 @@ PUBLIC_API_PREFIXES = (
 )
 PUBLIC_API_EXACT_PATHS = {"/health", "/health/live", "/health/ready"}
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+BACKEND_DOCUMENT_PREFIXES = (
+    "/auth",
+    "/email/open",
+    "/static/screenshots",
+    "/gmail/connect",
+    "/gmail/callback",
+    "/ai-sdr/calls/twilio",
+)
 
 
 @app.middleware("http")
 async def protect_api_routes(request: Request, call_next):
     path = request.url.path
-    if request.method == "GET" and _wants_frontend_document(request):
+    if _should_serve_frontend_document(request):
         response = _frontend_page_response(path.strip("/") or "index")
         if response:
             return response
@@ -800,6 +811,18 @@ def _wants_frontend_document(request: Request) -> bool:
     accept = request.headers.get("accept", "").lower()
     sec_fetch_dest = request.headers.get("sec-fetch-dest", "").lower()
     return sec_fetch_dest == "document" or ("text/html" in accept and "application/json" not in accept)
+
+
+def _should_serve_frontend_document(request: Request) -> bool:
+    return (
+        request.method == "GET"
+        and _wants_frontend_document(request)
+        and not _is_backend_document_path(request.url.path)
+    )
+
+
+def _is_backend_document_path(path: str) -> bool:
+    return any(path == prefix or path.startswith(f"{prefix}/") for prefix in BACKEND_DOCUMENT_PREFIXES)
 
 
 def _frontend_page_response(page: str) -> FileResponse | None:

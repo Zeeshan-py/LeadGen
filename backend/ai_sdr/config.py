@@ -79,6 +79,8 @@ class AISDRSettings(BaseSettings):
     cartesia_tts_model: str = Field(default="sonic-3.5", validation_alias="CARTESIA_TTS_MODEL")
     cartesia_stt_model: str = Field(default="ink-whisper", validation_alias="CARTESIA_STT_MODEL")
     cartesia_voice_id: str = Field(default="", validation_alias="CARTESIA_VOICE_ID")
+    cartesia_language: str = Field(default="en", validation_alias="CARTESIA_LANGUAGE")
+    cartesia_tts_speed: str = Field(default="normal", validation_alias="CARTESIA_TTS_SPEED")
     cartesia_tts_sample_rate: int = Field(default=8000, validation_alias="CARTESIA_TTS_SAMPLE_RATE")
     cartesia_tts_encoding: str = Field(default="pcm_mulaw", validation_alias="CARTESIA_TTS_ENCODING")
     cartesia_stt_encoding: str = Field(default="pcm_mulaw", validation_alias="CARTESIA_STT_ENCODING")
@@ -87,6 +89,9 @@ class AISDRSettings(BaseSettings):
         default="wss://api.cartesia.ai/stt/websocket",
         validation_alias="CARTESIA_STT_WS_URL",
     )
+    assistant_name: str = Field(default="", validation_alias="AI_SDR_ASSISTANT_NAME")
+    assistant_business_name: str = Field(default="", validation_alias="AI_SDR_ASSISTANT_BUSINESS_NAME")
+    ai_greeting: str = Field(default="", validation_alias="AI_SDR_AI_GREETING")
 
     @field_validator("api_prefix")
     @classmethod
@@ -105,6 +110,20 @@ class AISDRSettings(BaseSettings):
     @classmethod
     def trim_url(cls, value: str) -> str:
         return value.strip().rstrip("/")
+
+    @field_validator("cartesia_tts_speed")
+    @classmethod
+    def normalize_cartesia_speed(cls, value: str) -> str:
+        speed = value.strip().lower().replace("_", "-") or "normal"
+        allowed = {"slowest", "slower", "normal", "faster", "fastest"}
+        if speed not in allowed:
+            raise ValueError("Cartesia speaking speed must be slowest, slower, normal, faster, or fastest.")
+        return speed
+
+    @field_validator("cartesia_language", "assistant_name", "assistant_business_name", "ai_greeting")
+    @classmethod
+    def trim_optional_text(cls, value: str) -> str:
+        return value.strip()
 
     def media_stream_url(self, call_id: str) -> str:
         base = self.public_websocket_url
