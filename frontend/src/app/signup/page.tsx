@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { trackEvent, trackSignUp, trackWorkspaceCreation } from "@/lib/analytics";
 import { useAuth } from "@/lib/auth";
 
 export default function SignupPage() {
@@ -27,6 +28,8 @@ export default function SignupPage() {
     setBusy(true);
     try {
       await signup({ full_name: fullName, email, password, remember_me: rememberMe });
+      trackSignUp("email");
+      trackWorkspaceCreation("signup");
       router.replace("/dashboard");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Sign up failed");
@@ -51,7 +54,7 @@ export default function SignupPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3">
-            <Button variant="outline" className="w-full justify-center" onClick={() => { window.location.href = oauthUrl("google"); }}>
+            <Button variant="outline" className="w-full justify-center" onClick={() => { trackEvent("sign_up_start", { method: "google" }); window.location.href = oauthUrl("google"); }}>
               <Mail data-icon="inline-start" />
               Continue with Google
             </Button>

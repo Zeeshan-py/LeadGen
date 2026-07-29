@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
+
 import { PublicInfoPage } from "@/components/public-info-page";
+import { StructuredData } from "@/components/structured-data";
+import { breadcrumbJsonLd, createPageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = createPageMetadata("/terms");
 
 const sections = [
   {
@@ -40,11 +46,19 @@ const sections = [
 
 export default function TermsPage() {
   return (
-    <PublicInfoPage
-      eyebrow="Terms of Service"
-      title="Terms of Service"
-      description="These terms describe the basic rules for using LeadForge AI and its connected SaaS workflows."
-      sections={sections}
-    />
+    <>
+      <StructuredData
+        data={breadcrumbJsonLd([
+          { name: "Home", path: "/" },
+          { name: "Terms of Service", path: "/terms" },
+        ])}
+      />
+      <PublicInfoPage
+        eyebrow="Terms of Service"
+        title="Terms of Service"
+        description="These terms describe the basic rules for using LeadForge AI and its connected SaaS workflows."
+        sections={sections}
+      />
+    </>
   );
 }

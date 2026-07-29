@@ -17,6 +17,13 @@ const publicRoutes = new Set([
   "/terms",
   "/contact",
   "/about",
+  "/features",
+  "/features/lead-generator",
+  "/features/crm",
+  "/features/outreach",
+  "/features/ai-sdr",
+  "/features/analytics",
+  "/pricing",
 ]);
 const authRoutes = new Set(["/login", "/signup", "/forgot-password", "/reset-password"]);
 

@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import { BrainCircuit } from "lucide-react";
 
@@ -33,7 +31,13 @@ export function PublicInfoPage({
             <p className="text-xs text-muted-foreground">Private workspace SaaS</p>
           </div>
         </Link>
-        <nav className="hidden items-center gap-1 text-sm text-muted-foreground md:flex">
+        <nav aria-label="Primary" className="hidden items-center gap-1 text-sm text-muted-foreground md:flex">
+          <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/features">
+            Features
+          </Link>
+          <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/pricing">
+            Pricing
+          </Link>
           <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/about">
             About
           </Link>

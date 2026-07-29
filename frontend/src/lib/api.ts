@@ -21,6 +21,7 @@ import type {
   VoiceSpeed,
 } from "@/lib/types";
 import { apiFetch, API_URL } from "@/lib/http";
+import { trackAppError } from "@/lib/analytics";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(path, init);
@@ -31,7 +32,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       const payload = JSON.parse(text) as { detail?: string };
       detail = payload.detail ?? "";
     } catch {}
-    throw new Error(detail || text || `Request failed: ${response.status}`);
+    const message = detail || text || `Request failed: ${response.status}`;
+    trackAppError(message, false);
+    throw new Error(message);
   }
   return response.json() as Promise<T>;
 }

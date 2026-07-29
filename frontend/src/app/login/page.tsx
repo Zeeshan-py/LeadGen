@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { trackEvent, trackLogin } from "@/lib/analytics";
 import { useAuth } from "@/lib/auth";
 
 export default function LoginPage() {
@@ -35,6 +36,7 @@ export default function LoginPage() {
     setBusy(true);
     try {
       await login({ email, password, remember_me: rememberMe });
+      trackLogin("email");
       router.replace(nextPath);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Login failed");
@@ -59,7 +61,7 @@ export default function LoginPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3">
-            <Button variant="outline" className="w-full justify-center" onClick={() => { window.location.href = oauthUrl("google", nextPath); }}>
+            <Button variant="outline" className="w-full justify-center" onClick={() => { trackEvent("login_start", { method: "google" }); window.location.href = oauthUrl("google", nextPath); }}>
               <Mail data-icon="inline-start" />
               Continue with Google
             </Button>

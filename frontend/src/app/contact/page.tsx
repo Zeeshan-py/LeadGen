@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
+
 import { PublicInfoPage } from "@/components/public-info-page";
+import { StructuredData } from "@/components/structured-data";
+import { breadcrumbJsonLd, createPageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = createPageMetadata("/contact");
 
 const sections = [
   {
@@ -26,11 +32,19 @@ const sections = [
 
 export default function ContactPage() {
   return (
-    <PublicInfoPage
-      eyebrow="Contact"
-      title="Contact LeadForge AI"
-      description="Use this page for support, privacy, OAuth verification, and general business inquiries."
-      sections={sections}
-    />
+    <>
+      <StructuredData
+        data={breadcrumbJsonLd([
+          { name: "Home", path: "/" },
+          { name: "Contact", path: "/contact" },
+        ])}
+      />
+      <PublicInfoPage
+        eyebrow="Contact"
+        title="Contact LeadForge AI"
+        description="Use this page for support, privacy, OAuth verification, and general business inquiries."
+        sections={sections}
+      />
+    </>
   );
 }

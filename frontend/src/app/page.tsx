@@ -20,6 +20,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { StructuredData } from "@/components/structured-data";
+import {
+  createPageMetadata,
+  organizationJsonLd,
+  softwareApplicationJsonLd,
+  websiteJsonLd,
+} from "@/lib/seo";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = createPageMetadata("/");
 
 const signals = [
   { label: "Lead Generator", icon: Sparkles },
@@ -90,6 +100,7 @@ const audiences = [
 export default function LandingPage() {
   return (
     <main className="score-grid min-h-svh">
+      <StructuredData data={[organizationJsonLd(), softwareApplicationJsonLd(), websiteJsonLd()]} />
       <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-5 md:px-6">
         <Link href="/" className="flex items-center gap-3">
           <div className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground">
@@ -100,6 +111,20 @@ export default function LandingPage() {
             <p className="text-xs text-muted-foreground">Private workspace SaaS</p>
           </div>
         </Link>
+        <nav aria-label="Primary" className="hidden items-center gap-1 text-sm text-muted-foreground md:flex">
+          <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/features">
+            Features
+          </Link>
+          <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/pricing">
+            Pricing
+          </Link>
+          <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/about">
+            About
+          </Link>
+          <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/contact">
+            Contact
+          </Link>
+        </nav>
         <div className="flex items-center gap-2">
           <Button asChild variant="outline">
             <Link href="/login">Login</Link>
@@ -258,7 +283,13 @@ export default function LandingPage() {
 
       <footer className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 border-t border-border/70 px-4 py-6 text-sm text-muted-foreground md:px-6">
         <p>LeadForge AI</p>
-        <nav className="flex flex-wrap items-center gap-4">
+        <nav aria-label="Footer" className="flex flex-wrap items-center gap-4">
+          <Link className="hover:text-foreground" href="/features">
+            Features
+          </Link>
+          <Link className="hover:text-foreground" href="/pricing">
+            Pricing
+          </Link>
           <Link className="hover:text-foreground" href="/about">
             About
           </Link>

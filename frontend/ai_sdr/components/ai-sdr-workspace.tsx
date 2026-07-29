@@ -77,6 +77,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { trackAiSdrUsage } from "@/lib/analytics";
 
 const emptyDashboard: AISDRDashboard = {
   stats: {
@@ -228,6 +229,7 @@ export function AISDRWorkspace() {
   }, []);
 
   useEffect(() => {
+    trackAiSdrUsage("view_ai_sdr");
     refresh({});
   }, [refresh]);
 
@@ -332,6 +334,7 @@ export function AISDRWorkspace() {
         notes: customCall.notes.trim(),
       });
       toast.success(`AI SDR call created for ${response.contact.company}`);
+      trackAiSdrUsage("custom_call_created", { industry: customCall.industry.trim(), city: customCall.city.trim() });
       setCustomCall(emptyCustomCallForm);
       await refresh(filters);
       router.push(`/ai-sdr/call?contactId=${response.contact.id}&callId=${response.call.id}`);
@@ -778,6 +781,7 @@ function ManualCallButton({
         business_name: businessName,
         owner_phone: ownerPhone,
       });
+      trackAiSdrUsage("manual_call_started", { has_contact_id: Boolean(contactId) });
       toast.success("Manual SDR call started. Answer your phone to connect to the business.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Manual SDR call could not start");

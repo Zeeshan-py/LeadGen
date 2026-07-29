@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">LeadForge AI social preview</title>
+  <desc id="desc">LeadForge AI described as an AI lead generation, CRM, outreach, analytics, and AI SDR platform.</desc>
+  <rect width="1200" height="630" fill="#020617"/>
+  <path d="M0 0h1200v630H0z" fill="#020617"/>
+  <path d="M0 80h1200M0 180h1200M0 280h1200M0 380h1200M0 480h1200M0 580h1200M100 0v630M240 0v630M380 0v630M520 0v630M660 0v630M800 0v630M940 0v630M1080 0v630" stroke="#1e293b" stroke-width="1"/>
+  <rect x="82" y="86" width="140" height="140" rx="32" fill="#34d399"/>
+  <path d="M146 120c-20 0-36 16-36 36 0 11 5 21 12 28-7 7-12 17-12 28 0 20 16 36 36 36 12 0 23-6 29-15 7 9 18 15 30 15 8 0 14-6 14-14s-6-14-14-14c-5 0-8-4-8-8s3-8 8-8h22c8 0 14-6 14-14s-6-14-14-14h-22c-5 0-8-4-8-8s3-8 8-8c8 0 14-6 14-14s-6-14-14-14c-12 0-23 6-30 15-6-9-17-15-29-15Zm0 28c5 0 8 3 8 8s-3 8-8 8-8-3-8-8 3-8 8-8Zm0 56c5 0 8 3 8 8s-3 8-8 8-8-3-8-8 3-8 8-8Z" fill="#020617"/>
+  <text x="260" y="140" fill="#f8fafc" font-family="Arial, sans-serif" font-size="56" font-weight="700">LeadForge AI</text>
+  <text x="260" y="190" fill="#34d399" font-family="Arial, sans-serif" font-size="24" font-weight="700">AI-powered lead generation SaaS</text>
+  <text x="82" y="314" fill="#f8fafc" font-family="Arial, sans-serif" font-size="54" font-weight="700">Generate leads, manage CRM,</text>
+  <text x="82" y="380" fill="#f8fafc" font-family="Arial, sans-serif" font-size="54" font-weight="700">automate outreach, run AI SDR.</text>
+  <text x="86" y="462" fill="#cbd5e1" font-family="Arial, sans-serif" font-size="28">Private SaaS workspace for founders, agencies, and SDR teams.</text>
+  <g fill="#34d399" font-family="Arial, sans-serif" font-size="24" font-weight="700">
+    <text x="86" y="545">Lead Generation</text>
+    <text x="310" y="545">CRM</text>
+    <text x="405" y="545">Outreach</text>
+    <text x="565" y="545">Analytics</text>
+    <text x="720" y="545">AI SDR</text>
+  </g>
+</svg>

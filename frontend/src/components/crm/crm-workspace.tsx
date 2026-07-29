@@ -12,6 +12,7 @@ import {
 import { LeadDetailSheet } from "@/components/crm/lead-detail-sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getCrmLead, getCrmLeads, getCrmUsers } from "@/lib/api";
+import { trackCrmUsage } from "@/lib/analytics";
 import {
   crmStages,
   type CrmLead,
@@ -46,6 +47,7 @@ export function CrmWorkspace() {
   const deferredSearch = useDeferredValue(filters.search);
 
   useEffect(() => {
+    trackCrmUsage("view_crm");
     getCrmUsers().then(setUsers).catch((error) => toast.error(error.message));
   }, []);
 
@@ -92,6 +94,7 @@ export function CrmWorkspace() {
 
   async function selectLead(lead: CrmLead) {
     setSelectedId(lead.id);
+    trackCrmUsage("open_lead_detail", { stage: lead.crm_stage });
     try {
       setDetail(await getCrmLead(lead.id));
     } catch (error) {
@@ -106,6 +109,7 @@ export function CrmWorkspace() {
       current.map((lead) => (lead.id === updated.id ? updated : lead)),
     );
     if (updated.crm_stage !== detail?.crm_stage) {
+      trackCrmUsage("stage_changed", { stage: updated.crm_stage });
       getCrmLeads(params)
         .then((result) => {
           setLeads(result.items);

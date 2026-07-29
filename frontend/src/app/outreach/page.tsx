@@ -19,6 +19,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { getGmailConnection, getLeads, getOutreach, regenerateOutreach, sendEmail, syncEmailStatuses } from "@/lib/api";
+import { trackOutreachCampaign } from "@/lib/analytics";
 import type { GmailConnectionStatus, Lead, Outreach } from "@/lib/types";
 
 const versions = [
@@ -71,6 +72,7 @@ export default function OutreachPage() {
     try {
       const updated = await sendEmail(selected.id, version);
       setOutreach((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      trackOutreachCampaign("send_email", { version });
       toast.success("Email sent through Gmail");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Email send failed");
@@ -85,6 +87,7 @@ export default function OutreachPage() {
     try {
       const updated = await regenerateOutreach(selected.lead_id);
       setOutreach((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      trackOutreachCampaign("regenerate_draft", { version });
       if (updated.failed_reason) {
         toast.warning(updated.failed_reason);
       } else {

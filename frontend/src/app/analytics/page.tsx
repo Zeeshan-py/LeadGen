@@ -66,6 +66,7 @@ import {
   getCrmLeads,
   getOutreach,
 } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { compactNumber, dateLabel } from "@/lib/format";
 import type { Analytics, Campaign, CrmLead, CrmLeadList, Outreach } from "@/lib/types";
 
@@ -98,6 +99,7 @@ export default function AnalyticsPage() {
   const [segment, setSegment] = useState("all");
 
   useEffect(() => {
+    trackEvent("analytics_usage", { action: "view_analytics" });
     Promise.all([
       getAnalytics(),
       getCampaigns().catch(() => [] as Campaign[]),

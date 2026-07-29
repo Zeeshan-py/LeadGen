@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
+
 import { PublicInfoPage } from "@/components/public-info-page";
+import { StructuredData } from "@/components/structured-data";
+import { breadcrumbJsonLd, createPageMetadata } from "@/lib/seo";
+
+export const metadata: Metadata = createPageMetadata("/privacy");
 
 const sections = [
   {
@@ -40,11 +46,19 @@ const sections = [
 
 export default function PrivacyPage() {
   return (
-    <PublicInfoPage
-      eyebrow="Privacy Policy"
-      title="Privacy Policy"
-      description="This policy explains how LeadForge AI collects, uses, protects, and scopes information for private SaaS workspaces."
-      sections={sections}
-    />
+    <>
+      <StructuredData
+        data={breadcrumbJsonLd([
+          { name: "Home", path: "/" },
+          { name: "Privacy Policy", path: "/privacy" },
+        ])}
+      />
+      <PublicInfoPage
+        eyebrow="Privacy Policy"
+        title="Privacy Policy"
+        description="This policy explains how LeadForge AI collects, uses, protects, and scopes information for private SaaS workspaces."
+        sections={sections}
+      />
+    </>
   );
 }

@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { apiFetch, API_URL } from "@/lib/http";
+import { trackAppError } from "@/lib/analytics";
 
 export type AuthUser = {
   id: string;
@@ -147,7 +148,9 @@ async function parseJson<T>(response: Response): Promise<T> {
   const payload = text ? JSON.parse(text) : {};
   if (!response.ok) {
     const detail = typeof payload.detail === "string" ? payload.detail : "";
-    throw new Error(detail || text || `Request failed: ${response.status}`);
+    const message = detail || text || `Request failed: ${response.status}`;
+    trackAppError(message, false);
+    throw new Error(message);
   }
   return payload as T;
 }

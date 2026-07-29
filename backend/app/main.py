@@ -21,7 +21,7 @@ from typing import Any
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import asc, desc, select
 from sqlalchemy.orm import Session, joinedload
@@ -116,6 +116,73 @@ BACKEND_DOCUMENT_PREFIXES = (
     "/gmail/callback",
     "/ai-sdr/calls/twilio",
 )
+SEO_FILE_PATHS = {
+    "/robots.txt",
+    "/sitemap.xml",
+    "/manifest.webmanifest",
+    "/favicon.ico",
+    "/brand/icon.svg",
+    "/brand/icon-192.png",
+    "/brand/icon-512.png",
+    "/brand/leadforge-og.png",
+    "/brand/leadforge-og.svg",
+    "/brand/mask-icon.svg",
+}
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault(
+        "Permissions-Policy",
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=(), clipboard-write=(self)",
+    )
+    response.headers.setdefault("X-DNS-Prefetch-Control", "on")
+    response.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin-allow-popups")
+    response.headers.setdefault(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains; preload",
+    )
+    response.headers.setdefault("Content-Security-Policy", _content_security_policy())
+
+    if path.startswith("/_next/static/") or _is_versioned_static_asset_path(path):
+        response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
+    elif path in {"/robots.txt", "/sitemap.xml", "/manifest.webmanifest", "/sitemap"}:
+        response.headers.setdefault("Cache-Control", "public, max-age=300")
+    elif response.headers.get("content-type", "").startswith("text/html"):
+        response.headers.setdefault("Cache-Control", "public, max-age=0, must-revalidate")
+
+    return response
+
+
+def _content_security_policy() -> str:
+    directives = [
+        "default-src 'self'",
+        "base-uri 'self'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+        "form-action 'self'",
+        "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data: blob: https://www.googletagmanager.com https://www.google-analytics.com https://*.googleusercontent.com https://avatars.githubusercontent.com",
+        "font-src 'self' data:",
+        "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://region1.google-analytics.com",
+        "frame-src https://www.googletagmanager.com",
+        "worker-src 'self' blob:",
+        "manifest-src 'self'",
+        "upgrade-insecure-requests",
+    ]
+    return "; ".join(directives)
+
+
+@app.get("/sitemap", include_in_schema=False)
+def sitemap_alias() -> RedirectResponse:
+    return RedirectResponse(url="/sitemap.xml", status_code=308)
 
 
 @app.middleware("http")
@@ -814,15 +881,26 @@ def _wants_frontend_document(request: Request) -> bool:
 
 
 def _should_serve_frontend_document(request: Request) -> bool:
+    path = request.url.path
     return (
         request.method == "GET"
         and _wants_frontend_document(request)
-        and not _is_backend_document_path(request.url.path)
+        and not _is_backend_document_path(path)
+        and not _is_frontend_static_asset_path(path)
     )
 
 
 def _is_backend_document_path(path: str) -> bool:
     return any(path == prefix or path.startswith(f"{prefix}/") for prefix in BACKEND_DOCUMENT_PREFIXES)
+
+
+def _is_frontend_static_asset_path(path: str) -> bool:
+    leaf = path.rsplit("/", 1)[-1]
+    return path == "/sitemap" or path in SEO_FILE_PATHS or "." in leaf
+
+
+def _is_versioned_static_asset_path(path: str) -> bool:
+    return path.startswith("/brand/") or path.endswith((".css", ".js", ".woff2", ".png", ".svg", ".ico"))
 
 
 def _frontend_page_response(page: str) -> FileResponse | None:

@@ -18,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { generationEventsUrl, getGenerationJob, getLatestGenerationJob, startGeneration } from "@/lib/api";
+import { trackLeadGeneration, trackOutreachCampaign } from "@/lib/analytics";
 import {
   businessTypes,
   continents,
@@ -131,6 +132,18 @@ export default function LeadGeneratorPage() {
     setRunning(true);
     try {
       const created = await startGeneration(form);
+      trackLeadGeneration({
+        country: form.country,
+        city: form.city,
+        business_type: form.business_type,
+        website_mode: form.website_mode,
+        max_leads: form.max_leads,
+      });
+      trackOutreachCampaign("campaign_created", {
+        country: form.country,
+        business_type: form.business_type,
+        max_leads: form.max_leads,
+      });
       window.localStorage.setItem(lastGenerationJobKey, created.job_id);
       toast.success("Lead generation started");
       connectToJob(created.job_id);
