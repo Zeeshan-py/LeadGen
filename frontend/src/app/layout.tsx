@@ -25,7 +25,11 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "LeadForge AI",
-  description: "Private AI lead generation workspace",
+  description:
+    "LeadForge AI is an AI-powered SaaS platform for lead generation, CRM, outreach campaigns, analytics, and AI SDR workflows.",
+  verification: {
+    google: "XCzXxICk5sRK6h6NsADijuzFcVDwrpCzPxYjv5Bwr5U",
+  },
 };
 
 export default function RootLayout({

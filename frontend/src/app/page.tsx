@@ -4,11 +4,16 @@ import {
   BarChart3,
   Bot,
   BrainCircuit,
+  Building2,
   CheckCircle2,
+  Database,
   LockKeyhole,
   Mail,
+  PhoneCall,
+  Send,
   ShieldCheck,
   Sparkles,
+  Target,
   Users,
 } from "lucide-react";
 
@@ -29,6 +34,57 @@ const checks = [
   "Private campaigns",
   "Private CRM",
   "Private analytics",
+];
+
+const productSteps = [
+  {
+    title: "Generate and qualify leads",
+    description:
+      "Find business prospects, enrich records, inspect website opportunities, and organize new leads into a private pipeline.",
+    icon: Target,
+  },
+  {
+    title: "Manage CRM follow-up",
+    description:
+      "Track stages, notes, contact details, campaign progress, and sales actions from one authenticated workspace.",
+    icon: Database,
+  },
+  {
+    title: "Automate outreach",
+    description:
+      "Prepare email campaigns, send through a connected Gmail account, sync replies, and keep outreach tied to each lead.",
+    icon: Send,
+  },
+  {
+    title: "Run AI SDR workflows",
+    description:
+      "Use connected Twilio and voice settings to support AI SDR calling workflows for qualification and follow-up.",
+    icon: PhoneCall,
+  },
+];
+
+const featureGroups = [
+  "AI lead discovery and enrichment",
+  "Private account-based CRM",
+  "Gmail outreach and reply sync",
+  "Google Sheets export support",
+  "Campaign and analytics tracking",
+  "Twilio and Cartesia voice settings",
+];
+
+const audiences = [
+  {
+    title: "Founders",
+    description: "Turn market research into a clear lead pipeline without managing separate tools.",
+  },
+  {
+    title: "Agencies",
+    description: "Research prospects, prepare outreach, and track follow-up for client growth work.",
+  },
+  {
+    title: "SDR teams",
+    description: "Coordinate lead generation, email outreach, CRM notes, and AI calling workflows.",
+  },
 ];
 
 export default function LandingPage() {
@@ -60,13 +116,16 @@ export default function LandingPage() {
       <section className="mx-auto grid min-h-[calc(100svh-5rem)] w-full max-w-7xl items-center gap-6 px-4 pb-10 md:px-6 xl:grid-cols-[1fr_520px]">
         <div className="max-w-3xl">
           <Badge variant="outline" className="border-primary/30 bg-primary/10 text-primary">
-            One account. One private workspace.
+            AI-powered lead generation SaaS
           </Badge>
           <h1 className="mt-5 text-4xl font-semibold tracking-normal md:text-6xl">
             LeadForge AI
           </h1>
           <p className="mt-5 max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">
-            Find leads, manage CRM follow-ups, prepare outreach, track analytics, and run AI SDR workflows inside a workspace only your account can access.
+            LeadForge AI helps businesses generate leads, manage CRM follow-up, automate outreach campaigns, track analytics, and operate AI SDR workflows from one secure private workspace.
+          </p>
+          <p className="mt-4 max-w-2xl text-sm leading-7 text-muted-foreground">
+            The platform connects lead research, Gmail outreach, Google Sheets, Twilio calling, Cartesia voice settings, and AI-assisted sales workflows so teams can move from prospect discovery to follow-up without switching systems.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
             <Button asChild size="lg" variant="outline">
@@ -111,6 +170,90 @@ export default function LandingPage() {
             </div>
           </CardContent>
         </Card>
+      </section>
+
+      <section className="mx-auto w-full max-w-7xl px-4 py-12 md:px-6">
+        <div className="max-w-3xl">
+          <p className="text-sm font-medium text-primary">What the product does</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-normal md:text-4xl">
+            From prospect research to AI SDR follow-up
+          </h2>
+          <p className="mt-4 text-sm leading-7 text-muted-foreground md:text-base">
+            LeadForge AI gives businesses a single place to discover prospects, review lead context, create outreach, send campaigns, monitor replies, manage CRM stages, and support phone-based AI SDR workflows.
+          </p>
+        </div>
+        <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {productSteps.map((item) => (
+            <Card key={item.title} className="glass-panel">
+              <CardContent className="p-5">
+                <div className="grid size-10 place-items-center rounded-lg bg-primary/10 text-primary">
+                  <item.icon className="size-5" />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold">{item.title}</h3>
+                <p className="mt-3 text-sm leading-6 text-muted-foreground">{item.description}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </section>
+
+      <section className="border-y border-border/70 bg-background/35">
+        <div className="mx-auto grid w-full max-w-7xl gap-8 px-4 py-12 md:px-6 lg:grid-cols-[0.9fr_1.1fr]">
+          <div>
+            <p className="text-sm font-medium text-primary">Features</p>
+            <h2 className="mt-3 text-3xl font-semibold tracking-normal">Built for lead operations</h2>
+            <p className="mt-4 text-sm leading-7 text-muted-foreground md:text-base">
+              Every workflow is scoped to the signed-in user so leads, CRM data, campaigns, Gmail connections, Twilio credentials, voice settings, and analytics remain inside that account workspace.
+            </p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {featureGroups.map((feature) => (
+              <div key={feature} className="flex items-center gap-3 rounded-lg border border-border/70 bg-background/55 px-4 py-3">
+                <CheckCircle2 className="size-4 shrink-0 text-primary" />
+                <span className="text-sm font-medium">{feature}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto grid w-full max-w-7xl gap-8 px-4 py-12 md:px-6 lg:grid-cols-[1fr_1fr]">
+        <div>
+          <p className="text-sm font-medium text-primary">Who it is for</p>
+          <h2 className="mt-3 text-3xl font-semibold tracking-normal">Teams that need focused sales automation</h2>
+          <div className="mt-6 grid gap-4">
+            {audiences.map((audience) => (
+              <div key={audience.title} className="rounded-lg border border-border/70 bg-secondary/25 p-4">
+                <div className="flex items-center gap-3">
+                  <Building2 className="size-4 text-primary" />
+                  <h3 className="font-semibold">{audience.title}</h3>
+                </div>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">{audience.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="rounded-lg border border-border/70 bg-background/55 p-5">
+          <p className="text-sm font-medium text-primary">Contact and policies</p>
+          <h2 className="mt-3 text-2xl font-semibold tracking-normal">Public information for users and reviewers</h2>
+          <p className="mt-4 text-sm leading-7 text-muted-foreground">
+            LeadForge AI provides public access to product information, support contact details, privacy practices, and terms of service without requiring visitors to sign in.
+          </p>
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            <Button asChild variant="outline">
+              <Link href="/contact">Contact</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/privacy">Privacy Policy</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/terms">Terms of Service</Link>
+            </Button>
+          </div>
+          <p className="mt-5 text-sm text-muted-foreground">
+            Support email: <a className="text-primary hover:underline" href="mailto:support@leadforage.pro">support@leadforage.pro</a>
+          </p>
+        </div>
       </section>
 
       <footer className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 border-t border-border/70 px-4 py-6 text-sm text-muted-foreground md:px-6">
