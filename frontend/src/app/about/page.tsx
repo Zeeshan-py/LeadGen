@@ -25,8 +25,8 @@ const sections = [
   {
     title: "Operator",
     body: [
-      "LeadForge AI is operated by Zeeshan Ahmad.",
-      "For contact, support, or verification questions, email Zeeshanahmad0159@gmail.com.",
+      "LeadForge AI is operated by the LeadForge team.",
+      "For contact, support, or verification questions, email support@leadforage.pro.",
     ],
   },
 ];

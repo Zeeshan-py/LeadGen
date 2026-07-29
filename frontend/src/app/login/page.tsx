@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, BrainCircuit, LockKeyhole, Mail, SquareCode } from "lucide-react";
+import { ArrowRight, BrainCircuit, LockKeyhole, Mail } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -62,10 +62,6 @@ export default function LoginPage() {
             <Button variant="outline" className="w-full justify-center" onClick={() => { window.location.href = oauthUrl("google", nextPath); }}>
               <Mail data-icon="inline-start" />
               Continue with Google
-            </Button>
-            <Button variant="outline" className="w-full justify-center" onClick={() => { window.location.href = oauthUrl("github", nextPath); }}>
-              <SquareCode data-icon="inline-start" />
-              Continue with GitHub
             </Button>
           </div>
 

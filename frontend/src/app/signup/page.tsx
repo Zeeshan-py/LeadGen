@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, BrainCircuit, LockKeyhole, Mail, SquareCode, UserRound } from "lucide-react";
+import { ArrowRight, BrainCircuit, LockKeyhole, Mail, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -55,10 +55,6 @@ export default function SignupPage() {
               <Mail data-icon="inline-start" />
               Continue with Google
             </Button>
-            <Button variant="outline" className="w-full justify-center" onClick={() => { window.location.href = oauthUrl("github"); }}>
-              <SquareCode data-icon="inline-start" />
-              Continue with GitHub
-            </Button>
           </div>
 
           <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
@@ -95,7 +91,7 @@ export default function SignupPage() {
                 Remember me
               </label>
               <Button type="submit" size="lg" className="w-full" disabled={busy}>
-                Create Workspace
+                Sign Up
                 <ArrowRight data-icon="inline-end" />
               </Button>
             </FieldGroup>

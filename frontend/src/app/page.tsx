@@ -69,12 +69,6 @@ export default function LandingPage() {
             Find leads, manage CRM follow-ups, prepare outreach, track analytics, and run AI SDR workflows inside a workspace only your account can access.
           </p>
           <div className="mt-7 flex flex-wrap gap-3">
-            <Button asChild size="lg">
-              <Link href="/signup">
-                Create Workspace
-                <ArrowRight data-icon="inline-end" />
-              </Link>
-            </Button>
             <Button asChild size="lg" variant="outline">
               <Link href="/login">
                 <LockKeyhole data-icon="inline-start" />

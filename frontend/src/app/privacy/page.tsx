@@ -32,7 +32,7 @@ const sections = [
   {
     title: "Contact",
     body: [
-      "For privacy questions or data requests, contact Zeeshan Ahmad at Zeeshanahmad0159@gmail.com.",
+      "For privacy questions or data requests, contact support@leadforage.pro.",
       "Last updated: July 29, 2026.",
     ],
   },
