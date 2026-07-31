@@ -19,6 +19,7 @@ from .paddle_billing import (
     billing_overview,
     billing_plans_response,
     cancel_subscription,
+    create_checkout_payload,
     create_portal_session,
     find_plan_by_price_id,
     get_customer_for_user,
@@ -36,6 +37,8 @@ from .schemas import (
     BillingPlansResponse,
     PaddleCancelSubscriptionRequest,
     PaddleChangePlanRequest,
+    PaddleCheckoutRequest,
+    PaddleCheckoutSession,
     PaddlePortalSessionResponse,
     PaddleSubscriptionRead,
 )
@@ -56,6 +59,19 @@ def get_my_billing(
     settings: Settings = Depends(get_settings),
 ) -> BillingOverview:
     return billing_overview(db, current_user, settings)
+
+
+@router.post("/checkout", response_model=PaddleCheckoutSession)
+def create_checkout_session(
+    payload: PaddleCheckoutRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> PaddleCheckoutSession:
+    try:
+        return create_checkout_payload(db, current_user, settings, payload.plan_key)
+    except PaddleConfigurationError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/history", response_model=BillingHistoryResponse)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { initializePaddle, type Environments, type Paddle, type PaddleEventData } from "@paddle/paddle-js";
@@ -9,17 +9,14 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { getBillingPlans } from "@/lib/api";
+import { createPaddleCheckout, getBillingPlans } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { useAuth } from "@/lib/auth";
-import type { BillingPlan } from "@/lib/types";
+import type { BillingPlan, PaddleCheckoutSession } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const paddleClientToken = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN?.trim() || "";
-const paddleEnvironment: Environments =
-  process.env.NEXT_PUBLIC_PADDLE_ENV === "production" ? "production" : "sandbox";
-
 let paddlePromise: Promise<Paddle | undefined> | null = null;
+let paddleInstanceKey = "";
 
 export function PricingCheckout() {
   const router = useRouter();
@@ -29,6 +26,8 @@ export function PricingCheckout() {
   const [environment, setEnvironment] = useState<"sandbox" | "production">("sandbox");
   const [plansLoading, setPlansLoading] = useState(true);
   const [checkoutPlan, setCheckoutPlan] = useState("");
+  const checkoutCompletedRef = useRef(false);
+  const cancelUrlRef = useRef("/billing/cancel");
 
   useEffect(() => {
     let mounted = true;
@@ -54,22 +53,28 @@ export function PricingCheckout() {
 
   const handlePaddleEvent = useCallback((event: PaddleEventData) => {
     if (event.name === "checkout.completed") {
+      checkoutCompletedRef.current = true;
       trackEvent("purchase", { provider: "paddle", environment });
-      router.push("/billing?checkout=success");
+      router.push("/billing/success");
+    }
+    if (event.name === "checkout.closed" && !checkoutCompletedRef.current) {
+      router.push(asAppPath(cancelUrlRef.current));
     }
     if (event.name === "checkout.error") {
       trackEvent("exception", { description: "Paddle checkout error", fatal: false });
     }
   }, [environment, router]);
 
-  const paddleInstance = useCallback(async () => {
-    if (!paddleClientToken) {
-      throw new Error("Paddle checkout is not configured yet");
+  const paddleInstance = useCallback(async (session: PaddleCheckoutSession) => {
+    const key = `${session.environment}:${session.client_token}`;
+    if (!session.client_token) {
+      throw new Error("Paddle checkout client token is not configured");
     }
-    if (!paddlePromise) {
+    if (!paddlePromise || paddleInstanceKey !== key) {
+      paddleInstanceKey = key;
       paddlePromise = initializePaddle({
-        environment: paddleEnvironment,
-        token: paddleClientToken,
+        environment: session.environment as Environments,
+        token: session.client_token,
         eventCallback: handlePaddleEvent,
       });
     }
@@ -85,34 +90,36 @@ export function PricingCheckout() {
       router.push(`/login?next=${encodeURIComponent(`/pricing?plan=${plan.key}`)}`);
       return;
     }
-    if (!plan.price_id) {
-      toast.error("This plan is missing a Paddle price ID");
+    if (!plan.configured) {
+      toast.error("This plan is not configured in Paddle yet");
       return;
     }
     setCheckoutPlan(plan.key);
     try {
-      const paddle = await paddleInstance();
+      checkoutCompletedRef.current = false;
+      const session = await createPaddleCheckout({ plan_key: plan.key });
+      cancelUrlRef.current = session.cancel_url;
+      setEnvironment(session.environment);
+      const paddle = await paddleInstance(session);
+      const customer = session.customer.paddle_customer_id
+        ? { id: session.customer.paddle_customer_id }
+        : { email: session.customer.email || user.email };
       trackEvent("begin_checkout", {
-        plan: plan.key,
-        price_id: plan.price_id,
-        environment,
+        plan: session.plan_key,
+        price_id: session.price_id,
+        environment: session.environment,
       });
       paddle.Checkout.open({
-        items: [{ priceId: plan.price_id, quantity: 1 }],
-        customer: {
-          email: user.email,
-        },
-        customData: {
-          leadforge_user_id: user.id,
-          user_id: user.id,
-          email: user.email,
-          plan_key: plan.key,
-        },
+        items: [{ priceId: session.price_id, quantity: session.quantity }],
+        customer,
+        customData: session.custom_data,
         settings: {
           displayMode: "overlay",
           theme: "dark",
-          successUrl: `${window.location.origin}/billing?checkout=success`,
+          successUrl: session.success_url,
           showAddDiscounts: true,
+          allowLogout: false,
+          variant: "one-page",
         },
       });
     } catch (error) {
@@ -120,7 +127,7 @@ export function PricingCheckout() {
     } finally {
       setCheckoutPlan("");
     }
-  }, [environment, paddleInstance, router, user]);
+  }, [paddleInstance, router, user]);
 
   useEffect(() => {
     if (selectedPlan && user && !loading) {
@@ -204,9 +211,9 @@ export function PricingCheckout() {
                     ))}
                   </ul>
 
-                  <Button className="mt-auto w-full" disabled={busy || loading} onClick={() => openCheckout(plan)}>
+                  <Button className="mt-auto w-full" disabled={busy || loading || !plan.configured} onClick={() => openCheckout(plan)}>
                     {busy ? <Loader2 className="animate-spin" /> : <CreditCard />}
-                    {user ? "Open checkout" : "Login to subscribe"}
+                    {!plan.configured ? "Plan unavailable" : user ? "Open checkout" : "Login to subscribe"}
                     <ArrowRight />
                   </Button>
                 </article>
@@ -217,6 +224,15 @@ export function PricingCheckout() {
       </section>
     </main>
   );
+}
+
+function asAppPath(url: string) {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return url || "/billing/cancel";
+  }
 }
 
 function formatMoney(amount: string, currencyCode: string) {

@@ -51,9 +51,18 @@ export function BillingDashboard() {
   }
 
   const currentPlan = useMemo(
-    () => overview?.plans.find((plan) => plan.price_id === overview.subscription?.price_id),
+    () => overview?.plans.find((plan) => plan.key === overview.subscription?.access_plan),
     [overview],
   );
+  const hasServiceAccess = Boolean(overview?.subscription?.access_active);
+  const hasMutableSubscription = Boolean(
+    overview?.subscription &&
+      overview.subscription.status !== "canceled" &&
+      overview.subscription.status !== "paused",
+  );
+  const renewalOrAccessDate = overview?.subscription?.cancel_at_period_end
+    ? overview.subscription.access_until
+    : overview?.subscription?.next_billed_at || overview?.subscription?.access_until;
 
   async function openPortal() {
     setAction("portal");
@@ -127,9 +136,9 @@ export function BillingDashboard() {
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={openPortal} disabled={!overview?.customer || action === "portal"}>
               {action === "portal" ? <Loader2 className="animate-spin" /> : <ArrowUpRight />}
-              Customer portal
+              Manage subscription
             </Button>
-            {!overview?.subscription ? (
+            {!hasServiceAccess ? (
               <Button asChild>
                 <Link href="/pricing">
                   <CreditCard />
@@ -141,10 +150,19 @@ export function BillingDashboard() {
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
-          <Metric label="Current plan" value={currentPlan?.name || "No subscription"} />
+          <Metric label="Current plan" value={hasServiceAccess ? currentPlan?.name || "Active subscription" : "Free"} />
           <Metric label="Status" value={formatStatus(overview?.subscription?.status)} />
-          <Metric label="Next bill" value={formatDate(overview?.subscription?.next_billed_at)} />
+          <Metric
+            label={overview?.subscription?.cancel_at_period_end ? "Access until" : "Renewal date"}
+            value={formatDate(renewalOrAccessDate)}
+          />
         </div>
+
+        {overview?.subscription?.status === "past_due" ? (
+          <div className="mt-4 rounded-lg border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">
+            Renewal payment is in retry. Access remains active while Paddle retries collection.
+          </div>
+        ) : null}
 
         {overview?.subscription?.scheduled_change_action ? (
           <div className="mt-4 rounded-lg border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">
@@ -161,7 +179,7 @@ export function BillingDashboard() {
         </div>
         <div className="mt-5 grid gap-4 lg:grid-cols-3">
           {overview?.plans.map((plan) => {
-            const isCurrent = plan.price_id === overview.subscription?.price_id;
+            const isCurrent = hasServiceAccess && plan.key === overview.subscription?.access_plan;
             const busy = action === `change:${plan.price_id}`;
             return (
               <article
@@ -190,15 +208,15 @@ export function BillingDashboard() {
                     </li>
                   ))}
                 </ul>
-                {overview?.subscription ? (
+                {hasMutableSubscription ? (
                   <Button
                     className="mt-auto w-full"
                     variant={isCurrent ? "outline" : "default"}
-                    disabled={isCurrent || busy}
+                    disabled={isCurrent || busy || !plan.configured}
                     onClick={() => changePlan(plan.price_id, plan.key)}
                   >
                     {busy ? <Loader2 className="animate-spin" /> : <CreditCard />}
-                    {isCurrent ? "Active plan" : "Switch plan"}
+                    {isCurrent ? "Active plan" : !plan.configured ? "Plan unavailable" : "Switch plan"}
                   </Button>
                 ) : (
                   <Button asChild className="mt-auto w-full">
@@ -214,7 +232,7 @@ export function BillingDashboard() {
         </div>
       </section>
 
-      {overview?.subscription ? (
+      {hasMutableSubscription && !overview?.subscription?.cancel_at_period_end ? (
         <section className="rounded-lg border border-border/70 bg-card/75 p-5 shadow-sm">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>

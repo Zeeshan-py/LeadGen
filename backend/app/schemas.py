@@ -233,10 +233,13 @@ class BillingPlan(BaseModel):
     frequency: int = 1
     features: list[str] = Field(default_factory=list)
     highlighted: bool = False
+    configured: bool = True
 
 
 class BillingPlansResponse(BaseModel):
     environment: Literal["sandbox", "production"]
+    client_token_configured: bool = False
+    checkout_ready: bool = False
     plans: list[BillingPlan]
 
 
@@ -268,6 +271,10 @@ class PaddleSubscriptionRead(BaseModel):
     scheduled_change_action: str = ""
     scheduled_change_effective_at: datetime | None = None
     management_urls: dict[str, Any] = Field(default_factory=dict)
+    access_plan: str = "free"
+    access_until: datetime | None = None
+    access_active: bool = False
+    cancel_at_period_end: bool = False
 
 
 class PaddleTransactionRead(BaseModel):
@@ -298,6 +305,24 @@ class BillingHistoryResponse(BaseModel):
 class PaddlePortalSessionResponse(BaseModel):
     url: str
     urls: dict[str, Any] = Field(default_factory=dict)
+
+
+class PaddleCheckoutRequest(BaseModel):
+    plan_key: Literal["basic", "agent", "agency"]
+
+
+class PaddleCheckoutSession(BaseModel):
+    environment: Literal["sandbox", "production"]
+    client_token: str
+    plan_key: str
+    plan_name: str
+    price_id: str
+    product_id: str
+    quantity: int = 1
+    customer: dict[str, str] = Field(default_factory=dict)
+    custom_data: dict[str, Any] = Field(default_factory=dict)
+    success_url: str
+    cancel_url: str
 
 
 class PaddleChangePlanRequest(BaseModel):

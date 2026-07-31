@@ -64,6 +64,14 @@ class Settings(BaseSettings):
     paddle_environment: str = Field(default="sandbox", validation_alias=AliasChoices("PADDLE_ENV", "PADDLE_ENVIRONMENT"))
     paddle_sandbox_api_key: str = Field(default="", validation_alias="PADDLE_SANDBOX_API_KEY")
     paddle_live_api_key: str = Field(default="", validation_alias=AliasChoices("PADDLE_LIVE_API_KEY", "PADDLE_API_KEY"))
+    paddle_sandbox_client_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("PADDLE_SANDBOX_CLIENT_TOKEN", "NEXT_PUBLIC_PADDLE_CLIENT_TOKEN"),
+    )
+    paddle_live_client_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("PADDLE_LIVE_CLIENT_TOKEN", "PADDLE_CLIENT_TOKEN"),
+    )
     paddle_webhook_secret: str = Field(
         default="",
         validation_alias=AliasChoices("PADDLE_WEBHOOK_SECRET", "PADDLE_NOTIFICATION_WEBHOOK_SECRET"),
@@ -71,17 +79,20 @@ class Settings(BaseSettings):
     paddle_webhook_tolerance_seconds: int = Field(default=300, validation_alias="PADDLE_WEBHOOK_TOLERANCE_SECONDS")
     paddle_success_url: str = Field(default="", validation_alias="PADDLE_SUCCESS_URL")
     paddle_cancel_url: str = Field(default="", validation_alias="PADDLE_CANCEL_URL")
-    paddle_price_basic_monthly: str = Field(
-        default="pri_01kys3qbxn3wzm9qj531997ksz",
-        validation_alias="PADDLE_PRICE_BASIC_MONTHLY",
+    paddle_basic_product_id: str = Field(default="", validation_alias="PADDLE_BASIC_PRODUCT_ID")
+    paddle_basic_price_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("PADDLE_BASIC_PRICE_ID", "PADDLE_PRICE_BASIC_MONTHLY"),
     )
-    paddle_price_agent_monthly: str = Field(
-        default="pri_01kys40md1hjtvpyztme23cnmx",
-        validation_alias="PADDLE_PRICE_AGENT_MONTHLY",
+    paddle_agent_product_id: str = Field(default="", validation_alias="PADDLE_AGENT_PRODUCT_ID")
+    paddle_agent_price_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("PADDLE_AGENT_PRICE_ID", "PADDLE_PRICE_AGENT_MONTHLY"),
     )
-    paddle_price_agency_monthly: str = Field(
-        default="pri_01kys43pt84j6b43stbp0wfd2z",
-        validation_alias="PADDLE_PRICE_AGENCY_MONTHLY",
+    paddle_agency_product_id: str = Field(default="", validation_alias="PADDLE_AGENCY_PRODUCT_ID")
+    paddle_agency_price_id: str = Field(
+        default="",
+        validation_alias=AliasChoices("PADDLE_AGENCY_PRICE_ID", "PADDLE_PRICE_AGENCY_MONTHLY"),
     )
 
     apify_api_token: str = Field(default="", validation_alias="APIFY_API_TOKEN")
@@ -194,6 +205,10 @@ class Settings(BaseSettings):
     @property
     def paddle_api_key(self) -> str:
         return self.paddle_sandbox_api_key if self.paddle_is_sandbox else self.paddle_live_api_key
+
+    @property
+    def paddle_client_token(self) -> str:
+        return self.paddle_sandbox_client_token if self.paddle_is_sandbox else self.paddle_live_client_token
 
     @property
     def paddle_api_base_url(self) -> str:

@@ -19,13 +19,14 @@ import httpx
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
-from .auth import normalize_email, utc_now
+from .auth import as_utc, normalize_email, utc_now
 from .config import Settings
 from .models import PaddleCustomer, PaddleSubscription, PaddleTransaction, PaddleWebhookEvent, User
 from .schemas import (
     BillingOverview,
     BillingPlan,
     BillingPlansResponse,
+    PaddleCheckoutSession,
     PaddleCustomerRead,
     PaddleSubscriptionRead,
     PaddleTransactionRead,
@@ -48,11 +49,12 @@ def billing_plans(settings: Settings) -> list[BillingPlan]:
             key="basic",
             name="Basic",
             description="For solo operators validating a focused outbound workflow.",
-            price_id=settings.paddle_price_basic_monthly,
-            product_id="pro_01kys3ejdgd3nr6y6j2cqcrjcg",
+            price_id=settings.paddle_basic_price_id,
+            product_id=settings.paddle_basic_product_id,
             amount="1500",
             currency_code="USD",
             interval="month",
+            configured=bool(settings.paddle_basic_price_id and settings.paddle_basic_product_id),
             features=[
                 "600 leads per month",
                 "Lead generation workspace",
@@ -65,13 +67,15 @@ def billing_plans(settings: Settings) -> list[BillingPlan]:
             key="agent",
             name="Agent",
             description="For growing teams running AI-assisted prospecting and outreach.",
-            price_id=settings.paddle_price_agent_monthly,
-            product_id="pro_01kys3xzth1mn7gwrq6k0rd0p8",
+            price_id=settings.paddle_agent_price_id,
+            product_id=settings.paddle_agent_product_id,
             amount="3000",
             currency_code="USD",
             interval="month",
             highlighted=True,
+            configured=bool(settings.paddle_agent_price_id and settings.paddle_agent_product_id),
             features=[
+                "1,300 leads per month",
                 "Everything in Basic",
                 "AI SDR workspace",
                 "Twilio calling connection",
@@ -83,14 +87,15 @@ def billing_plans(settings: Settings) -> list[BillingPlan]:
             key="agency",
             name="Agency",
             description="For agencies managing higher-volume client acquisition workflows.",
-            price_id=settings.paddle_price_agency_monthly,
-            product_id="pro_01kys41tnxknbjg790vp2n0j0a",
+            price_id=settings.paddle_agency_price_id,
+            product_id=settings.paddle_agency_product_id,
             amount="5000",
             currency_code="USD",
             interval="month",
+            configured=bool(settings.paddle_agency_price_id and settings.paddle_agency_product_id),
             features=[
+                "2,400 leads per month",
                 "Everything in Agent",
-                "Higher lead volume",
                 "Priority workflow support",
                 "Advanced outreach operations",
                 "Agency-ready reporting",
@@ -100,14 +105,64 @@ def billing_plans(settings: Settings) -> list[BillingPlan]:
 
 
 def billing_plans_response(settings: Settings) -> BillingPlansResponse:
+    plans = billing_plans(settings)
     return BillingPlansResponse(
         environment="sandbox" if settings.paddle_is_sandbox else "production",
-        plans=billing_plans(settings),
+        client_token_configured=bool(settings.paddle_client_token),
+        checkout_ready=bool(settings.paddle_client_token) and all(plan.configured for plan in plans),
+        plans=plans,
     )
 
 
 def find_plan_by_price_id(settings: Settings, price_id: str) -> BillingPlan | None:
     return next((plan for plan in billing_plans(settings) if plan.price_id == price_id), None)
+
+
+def find_plan_by_key(settings: Settings, plan_key: str) -> BillingPlan | None:
+    return next((plan for plan in billing_plans(settings) if plan.key == plan_key), None)
+
+
+def create_checkout_payload(db: Session, user: User, settings: Settings, plan_key: str) -> PaddleCheckoutSession:
+    plan = find_plan_by_key(settings, plan_key)
+    if not plan:
+        raise PaddleConfigurationError("Unknown LeadForge billing plan")
+    if not plan.configured:
+        raise PaddleConfigurationError(
+            f"Paddle catalog variables for the {plan.name} plan are not fully configured"
+        )
+    if not settings.paddle_client_token:
+        missing = "PADDLE_SANDBOX_CLIENT_TOKEN" if settings.paddle_is_sandbox else "PADDLE_LIVE_CLIENT_TOKEN"
+        raise PaddleConfigurationError(f"{missing} is not configured")
+
+    subscription = get_primary_subscription_for_user(db, user.id)
+    current_plan = subscription_access_plan(subscription) if subscription else "free"
+    customer = get_customer_for_user(db, user.id)
+
+    return PaddleCheckoutSession(
+        environment="sandbox" if settings.paddle_is_sandbox else "production",
+        client_token=settings.paddle_client_token,
+        plan_key=plan.key,
+        plan_name=plan.name,
+        price_id=plan.price_id,
+        product_id=plan.product_id,
+        quantity=1,
+        customer={
+            "email": user.email,
+            "paddle_customer_id": customer.customer_id if customer else "",
+        },
+        custom_data={
+            "leadforge_user_id": user.id,
+            "user_id": user.id,
+            "email": user.email,
+            "current_plan": current_plan,
+            "current_plan_key": current_plan,
+            "target_plan": plan.key,
+            "plan_key": plan.key,
+            "source": "leadforge_billing_checkout",
+        },
+        success_url=_absolute_frontend_url(settings, settings.paddle_success_url or "/billing/success"),
+        cancel_url=_absolute_frontend_url(settings, settings.paddle_cancel_url or "/billing/cancel"),
+    )
 
 
 async def paddle_api_request(
@@ -277,6 +332,23 @@ def billing_overview(db: Session, user: User, settings: Settings) -> BillingOver
     )
 
 
+def subscription_access_plan(subscription: PaddleSubscription) -> str:
+    return subscription.plan_key if subscription_access_active(subscription) else "free"
+
+
+def subscription_access_until(subscription: PaddleSubscription) -> datetime | None:
+    return subscription.current_period_ends_at or subscription.next_billed_at
+
+
+def subscription_access_active(subscription: PaddleSubscription) -> bool:
+    status = (subscription.status or "").lower()
+    if status in {"active", "trialing", "past_due"}:
+        return True
+    if status == "canceled" and _future_datetime(subscription.current_period_ends_at):
+        return True
+    return False
+
+
 def billing_history(db: Session, user: User) -> list[PaddleTransactionRead]:
     transactions = db.scalars(
         select(PaddleTransaction)
@@ -298,7 +370,11 @@ def get_primary_subscription_for_user(db: Session, user_id: str) -> PaddleSubscr
         .order_by(desc(PaddleSubscription.created_at))
     ).all()
     preferred = {"active", "trialing", "past_due", "paused"}
-    return next((item for item in subscriptions if item.status in preferred), None) or (subscriptions[0] if subscriptions else None)
+    return (
+        next((item for item in subscriptions if (item.status or "").lower() in preferred), None)
+        or next((item for item in subscriptions if subscription_access_active(item)), None)
+        or (subscriptions[0] if subscriptions else None)
+    )
 
 
 def get_owned_subscription(db: Session, user_id: str, subscription_id: str) -> PaddleSubscription | None:
@@ -344,6 +420,13 @@ def upsert_subscription(db: Session, data: dict[str, Any], settings: Settings) -
     user = _find_user(db, _custom_data_user_id(data), "")
     if not user and customer and customer.user_id:
         user = db.get(User, customer.user_id)
+    if customer_id and not customer:
+        customer = PaddleCustomer(customer_id=customer_id)
+        customer.email = normalize_email(user.email) if user else ""
+        if user:
+            customer.user_id = user.id
+        db.add(customer)
+        db.flush()
 
     subscription = db.scalar(
         select(PaddleSubscription).where(PaddleSubscription.subscription_id == subscription_id).limit(1)
@@ -409,6 +492,16 @@ def upsert_transaction(db: Session, data: dict[str, Any]) -> PaddleTransaction:
         user = db.get(User, subscription.user_id)
     if not user and customer and customer.user_id:
         user = db.get(User, customer.user_id)
+    if customer_id and not customer:
+        customer = PaddleCustomer(customer_id=customer_id)
+        customer.email = normalize_email(user.email) if user else ""
+        if user:
+            customer.user_id = user.id
+        db.add(customer)
+        db.flush()
+    elif customer and user and not customer.user_id:
+        customer.user_id = user.id
+        db.add(customer)
 
     transaction = db.scalar(select(PaddleTransaction).where(PaddleTransaction.transaction_id == transaction_id).limit(1))
     if not transaction:
@@ -451,6 +544,7 @@ def _customer_read(customer: PaddleCustomer) -> PaddleCustomerRead:
 
 
 def _subscription_read(subscription: PaddleSubscription) -> PaddleSubscriptionRead:
+    access_until = subscription_access_until(subscription)
     return PaddleSubscriptionRead(
         subscription_id=subscription.subscription_id,
         customer_id=subscription.customer_id,
@@ -472,6 +566,10 @@ def _subscription_read(subscription: PaddleSubscription) -> PaddleSubscriptionRe
         scheduled_change_action=subscription.scheduled_change_action,
         scheduled_change_effective_at=subscription.scheduled_change_effective_at,
         management_urls=subscription.management_urls or {},
+        access_plan=subscription_access_plan(subscription),
+        access_until=access_until,
+        access_active=subscription_access_active(subscription),
+        cancel_at_period_end=subscription.scheduled_change_action == "cancel",
     )
 
 
@@ -534,6 +632,21 @@ def _parse_datetime(value: Any) -> datetime | None:
         return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
         return None
+
+
+def _future_datetime(value: datetime | None) -> bool:
+    if not value:
+        return False
+    return as_utc(value) > utc_now()
+
+
+def _absolute_frontend_url(settings: Settings, value: str) -> str:
+    cleaned = value.strip()
+    if cleaned.startswith(("http://", "https://")):
+        return cleaned
+    path = cleaned if cleaned.startswith("/") else f"/{cleaned}"
+    base = settings.frontend_origin or settings.public_backend_url or "http://localhost:3000"
+    return f"{base.rstrip('/')}{path}"
 
 
 def _parse_signature_header(header: str) -> dict[str, list[str] | str]:

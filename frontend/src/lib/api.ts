@@ -19,6 +19,7 @@ import type {
   GoogleSheetsHealth,
   Lead,
   Outreach,
+  PaddleCheckoutSession,
   TwilioConnectionStatus,
   VoiceSettingsStatus,
   VoiceSpeed,
@@ -202,6 +203,13 @@ export function getBillingHistory() {
 export function createBillingPortalSession() {
   return request<{ url: string; urls: Record<string, unknown> }>("/billing/portal-session", {
     method: "POST",
+  });
+}
+
+export function createPaddleCheckout(payload: { plan_key: "basic" | "agent" | "agency" }) {
+  return request<PaddleCheckoutSession>("/billing/checkout", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

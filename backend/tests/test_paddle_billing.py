@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.database import Base
 from app.models import PaddleSubscription, User
-from app.paddle_billing import process_paddle_webhook, verify_paddle_signature
+from app.paddle_billing import create_checkout_payload, process_paddle_webhook, verify_paddle_signature
 
 
 class PaddleBillingTests(unittest.TestCase):
@@ -25,7 +25,14 @@ class PaddleBillingTests(unittest.TestCase):
             _env_file=None,
             PADDLE_ENV="sandbox",
             PADDLE_SANDBOX_API_KEY="pdl_sdbx_test",
+            PADDLE_SANDBOX_CLIENT_TOKEN="test_client_token",
             PADDLE_WEBHOOK_SECRET="ntfsec_test",
+            PADDLE_BASIC_PRODUCT_ID="pro_basic_test",
+            PADDLE_BASIC_PRICE_ID="pri_basic_test",
+            PADDLE_AGENT_PRODUCT_ID="pro_agent_test",
+            PADDLE_AGENT_PRICE_ID="pri_agent_test",
+            PADDLE_AGENCY_PRODUCT_ID="pro_agency_test",
+            PADDLE_AGENCY_PRICE_ID="pri_agency_test",
         )
 
     def test_signature_verification_accepts_valid_paddle_header(self) -> None:
@@ -64,8 +71,8 @@ class PaddleBillingTests(unittest.TestCase):
                     {
                         "quantity": 1,
                         "price": {
-                            "id": self.settings.paddle_price_agent_monthly,
-                            "product_id": "pro_01kys3xzth1mn7gwrq6k0rd0p8",
+                            "id": self.settings.paddle_agent_price_id,
+                            "product_id": self.settings.paddle_agent_product_id,
                         },
                     }
                 ],
@@ -87,7 +94,34 @@ class PaddleBillingTests(unittest.TestCase):
         assert subscription is not None
         self.assertEqual(subscription.user_id, user_id)
         self.assertEqual(subscription.plan_key, "agent")
-        self.assertEqual(subscription.price_id, self.settings.paddle_price_agent_monthly)
+        self.assertEqual(subscription.price_id, self.settings.paddle_agent_price_id)
+
+    def test_checkout_payload_uses_authenticated_user_and_current_plan(self) -> None:
+        user_id = "00000000-0000-0000-0000-000000000022"
+        with Session(self.engine) as db:
+            user = User(id=user_id, email="buyer@example.test", full_name="Buyer")
+            db.add(user)
+            db.add(
+                PaddleSubscription(
+                    subscription_id="sub_current",
+                    user_id=user_id,
+                    customer_id="ctm_current",
+                    status="active",
+                    plan_key="basic",
+                    price_id=self.settings.paddle_basic_price_id,
+                    product_id=self.settings.paddle_basic_product_id,
+                )
+            )
+            db.commit()
+
+            payload = create_checkout_payload(db, user, self.settings, "agency")
+
+        self.assertEqual(payload.client_token, "test_client_token")
+        self.assertEqual(payload.plan_key, "agency")
+        self.assertEqual(payload.price_id, self.settings.paddle_agency_price_id)
+        self.assertEqual(payload.custom_data["leadforge_user_id"], user_id)
+        self.assertEqual(payload.custom_data["email"], "buyer@example.test")
+        self.assertEqual(payload.custom_data["current_plan"], "basic")
 
 
 if __name__ == "__main__":

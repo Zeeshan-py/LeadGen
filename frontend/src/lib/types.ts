@@ -171,7 +171,7 @@ export type VoiceSettingsStatus = {
 };
 
 export type BillingPlan = {
-  key: string;
+  key: "basic" | "agent" | "agency";
   name: string;
   description: string;
   price_id: string;
@@ -182,10 +182,13 @@ export type BillingPlan = {
   frequency: number;
   features: string[];
   highlighted: boolean;
+  configured: boolean;
 };
 
 export type BillingPlansResponse = {
   environment: "sandbox" | "production";
+  client_token_configured: boolean;
+  checkout_ready: boolean;
   plans: BillingPlan[];
 };
 
@@ -217,6 +220,27 @@ export type PaddleSubscription = {
   scheduled_change_action: string;
   scheduled_change_effective_at: string | null;
   management_urls: Record<string, unknown>;
+  access_plan: string;
+  access_until: string | null;
+  access_active: boolean;
+  cancel_at_period_end: boolean;
+};
+
+export type PaddleCheckoutSession = {
+  environment: "sandbox" | "production";
+  client_token: string;
+  plan_key: string;
+  plan_name: string;
+  price_id: string;
+  product_id: string;
+  quantity: number;
+  customer: {
+    email?: string;
+    paddle_customer_id?: string;
+  };
+  custom_data: Record<string, unknown>;
+  success_url: string;
+  cancel_url: string;
 };
 
 export type PaddleTransaction = {
