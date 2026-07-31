@@ -47,16 +47,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refreshMe = useCallback(async () => {
-    const response = await apiFetch("/auth/me", undefined, true);
-    if (!response.ok) {
+    try {
+      const response = await apiFetch("/auth/me", undefined, true);
+      if (!response.ok) {
+        setUser(null);
+        return null;
+      }
+      const nextUser = (await response.json()) as AuthUser;
+      setUser(nextUser);
+      return nextUser;
+    } catch (error) {
       setUser(null);
-      setLoading(false);
+      trackAppError(error instanceof Error ? error.message : "Unable to refresh authentication", false);
       return null;
+    } finally {
+      setLoading(false);
     }
-    const nextUser = (await response.json()) as AuthUser;
-    setUser(nextUser);
-    setLoading(false);
-    return nextUser;
   }, []);
 
   useEffect(() => {
