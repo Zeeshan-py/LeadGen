@@ -20,6 +20,7 @@ import type {
   Lead,
   Outreach,
   PaddleCheckoutSession,
+  SubscriptionAccess,
   TwilioConnectionStatus,
   VoiceSettingsStatus,
   VoiceSpeed,
@@ -33,8 +34,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const text = await response.text();
     let detail = "";
     try {
-      const payload = JSON.parse(text) as { detail?: string };
-      detail = payload.detail ?? "";
+      const payload = JSON.parse(text) as { detail?: string | { message?: string } };
+      if (typeof payload.detail === "string") {
+        detail = payload.detail;
+      } else if (payload.detail?.message) {
+        detail = payload.detail.message;
+      }
     } catch {}
     const message = detail || text || `Request failed: ${response.status}`;
     trackAppError(message, false);
@@ -194,6 +199,10 @@ export function getBillingPlans() {
 
 export function getBillingOverview() {
   return request<BillingOverview>("/billing/me");
+}
+
+export function getSubscriptionAccess() {
+  return request<SubscriptionAccess>("/billing/access");
 }
 
 export function getBillingHistory() {

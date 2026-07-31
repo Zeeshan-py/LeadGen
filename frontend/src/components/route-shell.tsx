@@ -6,6 +6,7 @@ import { BrainCircuit } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
 import { useAuth } from "@/lib/auth";
+import { SubscriptionProvider } from "@/lib/subscription";
 
 const publicRoutes = new Set([
   "/",
@@ -66,5 +67,9 @@ export function RouteShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <SubscriptionProvider>
+      <AppShell>{children}</AppShell>
+    </SubscriptionProvider>
+  );
 }

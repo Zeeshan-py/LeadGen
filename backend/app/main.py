@@ -57,6 +57,12 @@ from .schemas import (
 from .services.lead_analysis import LeadAnalysisService
 from .services.crm import change_crm_stage, mark_contacted, record_crm_activity
 from .settings_store import effective_settings
+from .subscription_access import (
+    assert_generate_leads_allowed,
+    assert_lead_filters_allowed,
+    assert_outreach_send_allowed,
+    require_feature,
+)
 from .twilio_routes import router as twilio_router
 
 settings = get_settings()
@@ -274,8 +280,16 @@ def google_health(
 def generate_leads(
     payload: GenerateLeadRequest,
     background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> JobCreated:
+    assert_generate_leads_allowed(
+        db,
+        current_user,
+        requested_count=payload.max_leads,
+        website_mode=payload.website_mode,
+        campaign_name=payload.campaign_name,
+    )
     job = create_generation_job(payload, current_user.id)
     background_tasks.add_task(run_generation_job, job.id, payload, current_user.id)
     return JobCreated(
@@ -346,6 +360,13 @@ def get_leads(
     limit: int = Query(default=100, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
 ) -> list[Lead]:
+    assert_lead_filters_allowed(
+        db,
+        current_user,
+        campaign_id=campaign_id,
+        outreach_status=outreach_status,
+        contact=contact,
+    )
     query = select(Lead).where(Lead.user_id == current_user.id)
     if scope == "latest" and not campaign_id:
         latest_job = db.scalar(
@@ -399,6 +420,7 @@ def update_lead(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Lead:
+    require_feature(db, current_user, "crm")
     lead = db.scalar(select(Lead).where(Lead.id == lead_id, Lead.user_id == current_user.id))
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
@@ -418,6 +440,7 @@ def export_leads(
     scope: str = Query(default="latest", pattern="^(latest|all)$"),
     campaign_id: str = "",
 ) -> Response:
+    require_feature(db, current_user, "csv_export")
     query = select(Lead).where(Lead.user_id == current_user.id).order_by(desc(Lead.created_at))
     if campaign_id:
         query = query.where(Lead.campaign_id == campaign_id)
@@ -481,6 +504,7 @@ def get_campaigns(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> list[Campaign]:
+    require_feature(db, current_user, "campaigns")
     return list(
         db.scalars(
             select(Campaign)
@@ -496,6 +520,7 @@ def create_campaign(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Campaign:
+    require_feature(db, current_user, "campaigns")
     campaign = Campaign(user_id=current_user.id, **payload.model_dump(), status="draft")
     db.add(campaign)
     db.commit()
@@ -510,6 +535,7 @@ def get_outreach(
     lead_id: str = "",
     status: str = "",
 ) -> list[Outreach]:
+    require_feature(db, current_user, "outreach")
     query = select(Outreach).where(Outreach.user_id == current_user.id).order_by(desc(Outreach.created_at))
     if lead_id:
         query = query.where(Outreach.lead_id == lead_id)
@@ -524,6 +550,7 @@ def regenerate_outreach(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Outreach:
+    require_feature(db, current_user, "outreach")
     lead = db.scalar(select(Lead).where(Lead.id == lead_id, Lead.user_id == current_user.id))
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
@@ -596,6 +623,7 @@ def send_email(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Outreach:
+    assert_outreach_send_allowed(db, current_user)
     outreach = db.scalar(
         select(Outreach).options(joinedload(Outreach.lead), joinedload(Outreach.campaign)).where(
             Outreach.id == payload.outreach_id,
@@ -698,6 +726,7 @@ def sync_email_statuses(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> dict[str, int | bool]:
+    require_feature(db, current_user, "reply_sync")
     return sync_replied_outreach(db, settings, user_id=current_user.id).to_dict()
 
 
@@ -729,6 +758,7 @@ def get_analytics(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> AnalyticsResponse:
+    require_feature(db, current_user, "analytics")
     leads = db.scalars(select(Lead).where(Lead.user_id == current_user.id)).all()
     outreach = db.scalars(select(Outreach).where(Outreach.user_id == current_user.id)).all()
     events = db.scalars(
@@ -856,12 +886,18 @@ async def _reply_sync_loop() -> None:
 
 def _sync_replies_once() -> None:
     with SessionLocal() as db:
-        for user_id in db.scalars(select(User.id)).all():
+        for user in db.scalars(select(User)).all():
+            try:
+                require_feature(db, user, "reply_sync")
+            except HTTPException as exc:
+                if exc.status_code == 403:
+                    continue
+                raise
             sync_replied_outreach(
                 db,
                 settings,
                 raise_on_missing_credentials=False,
-                user_id=user_id,
+                user_id=user.id,
             )
 
 

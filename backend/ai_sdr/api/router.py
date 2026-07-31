@@ -45,26 +45,26 @@ from ai_sdr.schemas import (
 from ai_sdr.services.dashboard import AISDRDashboardService
 from ai_sdr.services.ingestion import AISDRIngestionService
 from ai_sdr.services.sources import supported_sources
-from app.auth import get_current_user
 from app.database import get_db
 from app.models import Lead, User
+from app.subscription_access import require_feature_dependency, require_feature_user
 
 settings = get_ai_sdr_settings()
 router = APIRouter(prefix=settings.api_prefix, tags=["ai-sdr"])
 
 
 @router.get("/health")
-def ai_sdr_health() -> dict[str, str | bool]:
+def ai_sdr_health(_access: None = Depends(require_feature_dependency("ai_sdr"))) -> dict[str, str | bool]:
     return {"status": "ok", "module": "ai_sdr", "enabled": settings.enabled}
 
 
 @router.get("/sources", response_model=list[AISDRSourceDescriptor])
-def get_sources() -> list[AISDRSourceDescriptor]:
+def get_sources(_access: None = Depends(require_feature_dependency("ai_sdr"))) -> list[AISDRSourceDescriptor]:
     return supported_sources()
 
 
 @router.get("/conversation/states", response_model=list[str])
-def get_conversation_states() -> list[str]:
+def get_conversation_states(_access: None = Depends(require_feature_dependency("ai_sdr"))) -> list[str]:
     return [state.value for state in ConversationState]
 
 
@@ -72,7 +72,7 @@ def get_conversation_states() -> list[str]:
 async def start_outbound_call(
     payload: AISDRCallStart,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> dict:
     try:
         _require_user_contact(db, payload.contact_id, current_user.id)
@@ -96,7 +96,7 @@ async def start_outbound_call(
 async def start_manual_bridge_call(
     payload: AISDRManualBridgeCallStart,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> dict:
     try:
         if payload.contact_id:
@@ -122,7 +122,7 @@ async def start_manual_bridge_call(
 async def start_custom_target_call(
     payload: AISDRCustomCallTarget,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> dict:
     actor = payload.actor.strip() or settings.default_actor
     objective = _custom_target_objective(payload)
@@ -193,7 +193,7 @@ async def start_custom_target_call(
 @router.get("/calls", response_model=list[AISDRCallSessionRead])
 def list_calls(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> list[dict]:
     return [
         session.to_dict()
@@ -206,7 +206,7 @@ def list_calls(
 def get_call(
     call_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> dict:
     session = default_calling_orchestrator.get_session(call_id)
     if not session:
@@ -220,7 +220,7 @@ async def control_call(
     call_id: str,
     payload: AISDRCallControl,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> dict:
     try:
         session = default_calling_orchestrator.get_session(call_id)
@@ -245,7 +245,7 @@ async def inject_call_transcript(
     call_id: str,
     payload: AISDRCallTranscriptCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> dict:
     try:
         session = default_calling_orchestrator.get_session(call_id)
@@ -269,7 +269,7 @@ async def complete_call(
     call_id: str,
     payload: AISDRCallControl | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> dict:
     try:
         session = default_calling_orchestrator.get_session(call_id)
@@ -346,7 +346,7 @@ async def twilio_media_stream(websocket: WebSocket) -> None:
 def start_conversation(
     payload: AISDRConversationStart,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> dict:
     if payload.contact_id:
         _require_user_contact(db, payload.contact_id, current_user.id)
@@ -366,7 +366,7 @@ def start_conversation(
 def get_conversation(
     session_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> dict:
     response = default_conversation_manager.get_session(session_id)
     if not response:
@@ -381,7 +381,7 @@ def add_conversation_turn(
     session_id: str,
     payload: AISDRConversationTurn,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> dict:
     existing = default_conversation_manager.get_session(session_id)
     if not existing:
@@ -397,7 +397,6 @@ def add_conversation_turn(
 @router.get("/dashboard", response_model=AISDRDashboardResponse)
 def get_dashboard(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
     status: str = "",
     industry: str = "",
     city: str = "",
@@ -405,6 +404,7 @@ def get_dashboard(
     search: str = "",
     limit: int = Query(default=200, ge=1, le=500),
     offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> AISDRDashboardResponse:
     return AISDRDashboardService(db, current_user.id).dashboard(
         status=status,
@@ -421,7 +421,7 @@ def get_dashboard(
 def get_contact(
     contact_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> AISDRContactSummary:
     contact = AISDRDashboardService(db, current_user.id).get_contact(contact_id)
     if not contact:
@@ -433,7 +433,7 @@ def get_contact(
 def bulk_delete_contacts(
     payload: AISDRBulkContactAction,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> AISDRBulkActionResult:
     return AISDRDashboardService(db, current_user.id).archive_contacts(
         payload.contact_ids,
@@ -445,7 +445,7 @@ def bulk_delete_contacts(
 def export_contacts(
     payload: AISDRBulkContactAction | None = None,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> Response:
     dashboard = AISDRDashboardService(db, current_user.id).dashboard(limit=500)
     selected_ids = set(payload.contact_ids) if payload else set()
@@ -498,7 +498,7 @@ def export_contacts(
 def create_import(
     payload: AISDRImportCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> AISDRImportResponse:
     return _ingest(payload, db, current_user)
 
@@ -506,11 +506,11 @@ def create_import(
 @router.get("/imports", response_model=list[AISDRBatchRead])
 def list_imports(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
     source_type: AISDRSourceType | None = None,
     status: AISDRImportStatus | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> list[AISDRBatchRead]:
     return AISDRIngestionService(db, current_user.id).list_batches(
         source_type=source_type,
@@ -524,7 +524,7 @@ def list_imports(
 def get_import(
     batch_id: str,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> AISDRImportDetail:
     batch = AISDRIngestionService(db, current_user.id).get_batch(batch_id)
     if not batch:
@@ -536,7 +536,7 @@ def get_import(
 def create_manual_contact(
     payload: AISDRManualContactCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> AISDRImportResponse:
     return _ingest(
         AISDRImportCreate(
@@ -554,7 +554,7 @@ def create_manual_contact(
 def create_rest_contacts(
     payload: AISDRRestContactsCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_feature_user("ai_sdr")),
 ) -> AISDRImportResponse:
     return _ingest(
         AISDRImportCreate(

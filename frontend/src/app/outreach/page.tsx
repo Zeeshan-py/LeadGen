@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Mail, RefreshCw, Send, Settings, ShieldCheck } from "lucide-react";
+import { Copy, LockKeyhole, Mail, RefreshCw, Send, Settings, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -18,8 +18,10 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { SubscriptionGate } from "@/components/subscription-gate";
 import { getGmailConnection, getLeads, getOutreach, regenerateOutreach, sendEmail, syncEmailStatuses } from "@/lib/api";
 import { trackOutreachCampaign } from "@/lib/analytics";
+import { useSubscription } from "@/lib/subscription";
 import type { GmailConnectionStatus, Lead, Outreach } from "@/lib/types";
 
 const versions = [
@@ -29,6 +31,15 @@ const versions = [
 ] as const;
 
 export default function OutreachPage() {
+  return (
+    <SubscriptionGate feature="outreach" benefits={["Gmail outreach", "AI email drafts", "Daily sending quota"]}>
+      <OutreachWorkspace />
+    </SubscriptionGate>
+  );
+}
+
+function OutreachWorkspace() {
+  const subscription = useSubscription();
   const [outreach, setOutreach] = useState<Outreach[]>([]);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -52,6 +63,9 @@ export default function OutreachPage() {
   const selected = outreach.find((item) => item.id === selectedId) ?? outreach[0];
   const selectedLead = selected ? leadById.get(selected.lead_id) : undefined;
   const body = selected ? selected[version] : "";
+  const outreachLimit = subscription.access?.outreach_daily_limit ?? 0;
+  const outreachRemaining = subscription.access?.outreach_remaining_today;
+  const outreachLimitReached = outreachLimit !== null && outreachRemaining === 0;
 
   async function copyText() {
     await navigator.clipboard.writeText(body);
@@ -60,6 +74,10 @@ export default function OutreachPage() {
 
   async function onSend() {
     if (!selected) return;
+    if (outreachLimitReached) {
+      subscription.openUpgrade("outreach", ["Higher outreach limits", "More daily sends", "Agency outreach workflows"]);
+      return;
+    }
     if (!gmailStatus?.is_connected) {
       toast.error("Please connect your Gmail account before sending emails.");
       return;
@@ -101,6 +119,10 @@ export default function OutreachPage() {
   }
 
   async function onSync() {
+    if (!subscription.hasFeature("reply_sync")) {
+      subscription.openUpgrade("reply_sync", ["Reply Sync", "Inbox tracking", "CRM reply updates"]);
+      return;
+    }
     try {
       const result = await syncEmailStatuses();
       toast.success(
@@ -152,10 +174,29 @@ export default function OutreachPage() {
               Outreach drafts appear here after a lead generation run.
             </p>
           )}
-          <Button variant="outline" onClick={onSync} disabled={!gmailStatus?.is_connected}>
-            <ShieldCheck data-icon="inline-start" />
+          <Button variant="outline" onClick={onSync} disabled={!gmailStatus?.is_connected && subscription.hasFeature("reply_sync")}>
+            {subscription.hasFeature("reply_sync") ? <ShieldCheck data-icon="inline-start" /> : <LockKeyhole data-icon="inline-start" />}
             Sync Replies
           </Button>
+          <div className="rounded-lg border border-border/70 bg-secondary/30 p-4 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="font-medium">Daily Outreach Limit</p>
+                <p className="mt-1 text-muted-foreground">
+                  {outreachLimit === null
+                    ? "Unlimited sends available on this plan."
+                    : `${subscription.access?.outreach_sent_today ?? 0}/${outreachLimit} emails sent today.`}
+                </p>
+              </div>
+              {outreachLimit === null ? <StatusBadge value="unlimited" /> : <StatusBadge value={`${outreachRemaining ?? 0}_remaining`} />}
+            </div>
+            {outreachLimitReached ? (
+              <Button variant="outline" className="mt-3 w-full" onClick={() => subscription.openUpgrade("outreach")}>
+                <LockKeyhole data-icon="inline-start" />
+                Increase outreach limit
+              </Button>
+            ) : null}
+          </div>
           <div className="rounded-lg border border-border/70 bg-secondary/30 p-4 text-sm">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -194,8 +235,8 @@ export default function OutreachPage() {
               {regenerating ? "Regenerating..." : "Regenerate"}
             </Button>
             <Button onClick={onSend} disabled={!selected || !selectedLead?.email || !gmailStatus?.is_connected || sending}>
-              <Send data-icon="inline-start" />
-              {sending ? "Sending..." : "Send Email"}
+              {outreachLimitReached ? <LockKeyhole data-icon="inline-start" /> : <Send data-icon="inline-start" />}
+              {sending ? "Sending..." : outreachLimitReached ? "Upgrade to Send" : "Send Email"}
             </Button>
           </div>
         </CardHeader>

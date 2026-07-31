@@ -268,6 +268,41 @@ export type BillingHistory = {
   transactions: PaddleTransaction[];
 };
 
+export type PlanKey = "free" | "basic" | "agent" | "agency";
+
+export type FeatureKey =
+  | "lead_generation"
+  | "standard_filters"
+  | "advanced_filters"
+  | "crm"
+  | "analytics"
+  | "csv_export"
+  | "outreach"
+  | "campaigns"
+  | "campaign_automation"
+  | "ai_sdr"
+  | "twilio"
+  | "reply_sync"
+  | "premium_enrichment"
+  | "unlimited_outreach";
+
+export type SubscriptionAccess = {
+  plan_key: PlanKey;
+  plan_name: string;
+  status: string;
+  access_active: boolean;
+  access_until: string | null;
+  lead_limit: number;
+  leads_used: number;
+  leads_remaining: number;
+  outreach_daily_limit: number | null;
+  outreach_sent_today: number;
+  outreach_remaining_today: number | null;
+  features: Record<FeatureKey, boolean>;
+  requirements: Record<FeatureKey, PlanKey>;
+  feature_labels: Record<FeatureKey, string>;
+};
+
 export const crmStages = [
   "new",
   "qualified",

@@ -13,6 +13,7 @@ import {
   Database,
   FileUp,
   Gauge,
+  LockKeyhole,
   Mail,
   Megaphone,
   Plus,
@@ -28,14 +29,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getAnalytics, getBillingOverview, getCampaigns, getGmailConnection, getLeads, getTwilioConnection } from "@/lib/api";
+import { PlanBadge } from "@/components/subscription-gate";
+import { getAnalytics, getCampaigns, getGmailConnection, getLeads, getTwilioConnection } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { Analytics, BillingOverview, Campaign, GmailConnectionStatus, Lead, TwilioConnectionStatus } from "@/lib/types";
+import { useSubscription } from "@/lib/subscription";
+import type { Analytics, Campaign, FeatureKey, GmailConnectionStatus, Lead, TwilioConnectionStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 type DashboardState = {
   analytics: Analytics | null;
-  billing: BillingOverview | null;
   campaigns: Campaign[];
   gmail: GmailConnectionStatus | null;
   leads: Lead[];
@@ -52,56 +54,67 @@ type MetricCard = {
 
 const initialState: DashboardState = {
   analytics: null,
-  billing: null,
   campaigns: [],
   gmail: null,
   leads: [],
   twilio: null,
 };
 
-const planLeadLimits: Record<string, number> = {
-  free: 50,
-  basic: 600,
-  agent: 1300,
-  agency: 2400,
-};
-
 const quickActions = [
   { title: "Generate Leads", href: "/lead-generator", icon: Sparkles, detail: "Build a targeted prospect list." },
-  { title: "Open CRM", href: "/crm", icon: Users, detail: "Review pipeline and follow-ups." },
-  { title: "Launch Campaign", href: "/campaigns", icon: Megaphone, detail: "Organize a new outreach motion." },
-  { title: "Start AI SDR", href: "/ai-sdr", icon: Bot, detail: "Prepare calling workflows." },
+  { title: "Open CRM", href: "/crm", icon: Users, detail: "Review pipeline and follow-ups.", feature: "crm" },
+  { title: "Launch Campaign", href: "/campaigns", icon: Megaphone, detail: "Organize a new outreach motion.", feature: "campaigns" },
+  { title: "Start AI SDR", href: "/ai-sdr", icon: Bot, detail: "Prepare calling workflows.", feature: "ai_sdr" },
   { title: "Import CSV", href: "/leads", icon: FileUp, detail: "Review or enrich imported leads." },
   { title: "Billing", href: "/billing", icon: CreditCard, detail: "Manage plan and invoices." },
-];
+] satisfies Array<{ title: string; href: string; icon: LucideIcon; detail: string; feature?: FeatureKey }>;
 
 export default function DashboardHome() {
   const { user } = useAuth();
+  const subscription = useSubscription();
   const [state, setState] = useState<DashboardState>(initialState);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const subscriptionLoading = subscription.loading;
+  const canViewAnalytics = !subscriptionLoading && subscription.hasFeature("analytics");
+  const canViewCampaigns = !subscriptionLoading && subscription.hasFeature("campaigns");
+  const canUseOutreach = !subscriptionLoading && subscription.hasFeature("outreach");
+  const canUseTwilio = !subscriptionLoading && subscription.hasFeature("twilio");
 
   useEffect(() => {
+    if (subscriptionLoading) {
+      return;
+    }
     let mounted = true;
-    Promise.allSettled([
-      getAnalytics(),
-      getBillingOverview(),
-      getCampaigns(),
-      getGmailConnection(),
-      getLeads({ limit: "6" }),
-      getTwilioConnection(),
+
+    let hadError = false;
+    const guarded = async <T,>(allowed: boolean, loader: () => Promise<T>, fallback: T) => {
+      if (!allowed) return fallback;
+      try {
+        return await loader();
+      } catch {
+        hadError = true;
+        return fallback;
+      }
+    };
+
+    Promise.all([
+      guarded(canViewAnalytics, getAnalytics, null),
+      guarded(canViewCampaigns, getCampaigns, [] as Campaign[]),
+      guarded(canUseOutreach, getGmailConnection, null),
+      guarded(true, () => getLeads({ limit: "6" }), [] as Lead[]),
+      guarded(canUseTwilio, getTwilioConnection, null),
     ])
-      .then(([analytics, billing, campaigns, gmail, leads, twilio]) => {
+      .then(([analytics, campaigns, gmail, leads, twilio]) => {
         if (!mounted) return;
         setState({
-          analytics: analytics.status === "fulfilled" ? analytics.value : null,
-          billing: billing.status === "fulfilled" ? billing.value : null,
-          campaigns: campaigns.status === "fulfilled" ? campaigns.value : [],
-          gmail: gmail.status === "fulfilled" ? gmail.value : null,
-          leads: leads.status === "fulfilled" ? leads.value : [],
-          twilio: twilio.status === "fulfilled" ? twilio.value : null,
+          analytics,
+          campaigns,
+          gmail,
+          leads,
+          twilio,
         });
-        if ([analytics, billing, campaigns, gmail, leads, twilio].some((item) => item.status === "rejected")) {
+        if (hadError) {
           setError("Some workspace data could not be refreshed.");
         }
       })
@@ -111,19 +124,19 @@ export default function DashboardHome() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [canUseOutreach, canUseTwilio, canViewAnalytics, canViewCampaigns, subscriptionLoading]);
 
-  const planKey = state.billing?.subscription?.access_plan || "free";
-  const planName = titleCase(planKey);
-  const leadLimit = planLeadLimits[planKey] ?? planLeadLimits.free;
-  const leadsGenerated = state.analytics?.total_leads_generated ?? state.leads.length;
+  const planName = subscription.access?.plan_name ?? "Free";
+  const leadLimit = subscription.access?.lead_limit ?? 10;
+  const leadsGenerated = subscription.access?.leads_used ?? state.analytics?.total_leads_generated ?? state.leads.length;
   const emailsSent = state.analytics?.emails_sent ?? 0;
   const replies = state.analytics?.replies_received ?? 0;
   const replyRate = emailsSent > 0 ? Math.round((replies / emailsSent) * 100) : 0;
   const activeCampaigns = state.campaigns.filter((campaign) => !["archived", "completed"].includes((campaign.status || "").toLowerCase())).length;
   const connectedAccounts = [state.gmail?.is_connected, state.twilio?.is_connected].filter(Boolean).length;
-  const remainingLeads = Math.max(leadLimit - leadsGenerated, 0);
-  const renewalDate = state.billing?.subscription?.next_billed_at || state.billing?.subscription?.access_until || "";
+  const remainingLeads = subscription.access?.leads_remaining ?? Math.max(leadLimit - leadsGenerated, 0);
+  const renewalDate = subscription.access?.access_until || "";
+  const subscriptionStatus = subscription.access?.status || "Free workspace";
 
   const metrics = useMemo<MetricCard[]>(
     () => [
@@ -163,14 +176,14 @@ export default function DashboardHome() {
       {
         label: "Current Plan",
         value: planName,
-        hint: state.billing?.subscription?.status || "No paid subscription",
+        hint: subscriptionStatus,
         icon: CreditCard,
       },
     ],
-    [activeCampaigns, connectedAccounts, emailsSent, leadsGenerated, planName, remainingLeads, replies, replyRate, state],
+    [activeCampaigns, connectedAccounts, emailsSent, leadsGenerated, planName, remainingLeads, replies, replyRate, state, subscriptionStatus],
   );
 
-  const activity = buildActivity(state, planName);
+  const activity = buildActivity(state, planName, Boolean(subscription.access?.access_active));
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
@@ -194,12 +207,19 @@ export default function DashboardHome() {
                   Generate Leads
                 </Link>
               </Button>
-              <Button asChild variant="outline">
-                <Link href="/outreach">
-                  <Send data-icon="inline-start" />
+              {subscription.hasFeature("outreach") ? (
+                <Button asChild variant="outline">
+                  <Link href="/outreach">
+                    <Send data-icon="inline-start" />
+                    Start Outreach
+                  </Link>
+                </Button>
+              ) : (
+                <Button variant="outline" onClick={() => subscription.openUpgrade("outreach")}>
+                  <LockKeyhole data-icon="inline-start" />
                   Start Outreach
-                </Link>
-              </Button>
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -301,22 +321,49 @@ export default function DashboardHome() {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3 sm:grid-cols-2">
-            {quickActions.map((action) => (
-              <Link
-                key={action.title}
-                href={action.href}
-                className="group rounded-lg border border-border/70 bg-secondary/25 p-4 transition-colors hover:border-primary/35 hover:bg-primary/10"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-background/70 text-primary">
-                    <action.icon className="size-4" />
+            {quickActions.map((action) => {
+              const locked = Boolean(action.feature && !subscription.hasFeature(action.feature));
+              const content = (
+                <>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-background/70 text-primary">
+                      <action.icon className="size-4" />
+                    </div>
+                    {locked ? (
+                      <LockKeyhole className="size-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
+                    )}
                   </div>
-                  <ArrowRight className="size-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
-                </div>
-                <p className="mt-3 text-sm font-medium">{action.title}</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">{action.detail}</p>
-              </Link>
-            ))}
+                  <div className="mt-3 flex items-center gap-2">
+                    <p className="text-sm font-medium">{action.title}</p>
+                    {action.feature ? <PlanBadge feature={action.feature} /> : null}
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">{action.detail}</p>
+                </>
+              );
+              if (locked && action.feature) {
+                return (
+                  <button
+                    key={action.title}
+                    type="button"
+                    className="group rounded-lg border border-border/70 bg-secondary/25 p-4 text-left opacity-80 transition-colors hover:border-primary/35 hover:bg-primary/10"
+                    onClick={() => subscription.openUpgrade(action.feature)}
+                  >
+                    {content}
+                  </button>
+                );
+              }
+              return (
+                <Link
+                  key={action.title}
+                  href={action.href}
+                  className="group rounded-lg border border-border/70 bg-secondary/25 p-4 transition-colors hover:border-primary/35 hover:bg-primary/10"
+                >
+                  {content}
+                </Link>
+              );
+            })}
           </CardContent>
         </Card>
 
@@ -456,7 +503,7 @@ function EmptyPanel({
   );
 }
 
-function buildActivity(state: DashboardState, planName: string) {
+function buildActivity(state: DashboardState, planName: string, accessActive: boolean) {
   const items: Array<{ title: string; detail: string; icon: LucideIcon }> = [];
   if (state.analytics?.total_leads_generated) {
     items.push({
@@ -479,7 +526,7 @@ function buildActivity(state: DashboardState, planName: string) {
       icon: Send,
     });
   }
-  if (state.billing?.subscription?.access_active) {
+  if (accessActive) {
     items.push({
       title: "Subscription active",
       detail: `${planName} plan is active for this workspace.`,
@@ -529,10 +576,6 @@ function compactNumber(value: number) {
 function percent(value: number, total: number) {
   if (!total) return 0;
   return Math.max(0, Math.min(100, Math.round((value / total) * 100)));
-}
-
-function titleCase(value: string) {
-  return value ? value.charAt(0).toUpperCase() + value.slice(1) : "Free";
 }
 
 function dateLabel(value: string) {

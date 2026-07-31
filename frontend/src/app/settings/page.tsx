@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { PlanBadge } from "@/components/subscription-gate";
 import {
   checkGmailConnection,
   checkTwilioConnection,
@@ -68,10 +69,18 @@ import {
   saveVoiceSettings,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import type { BillingOverview, GmailConnectionStatus, TwilioConnectionStatus, VoiceSettingsStatus, VoiceSpeed } from "@/lib/types";
+import { useSubscription } from "@/lib/subscription";
+import type {
+  BillingOverview,
+  FeatureKey,
+  GmailConnectionStatus,
+  TwilioConnectionStatus,
+  VoiceSettingsStatus,
+  VoiceSpeed,
+} from "@/lib/types";
 
 const planLeadLimits: Record<string, number> = {
-  free: 50,
+  free: 10,
   basic: 600,
   agent: 1300,
   agency: 2400,
@@ -79,6 +88,7 @@ const planLeadLimits: Record<string, number> = {
 
 export default function SettingsPage() {
   const { user } = useAuth();
+  const subscription = useSubscription();
   const [settingsForm, setSettingsForm] = useState({
     default_lead_limit: 50,
     include_screenshots: true,
@@ -132,10 +142,21 @@ export default function SettingsPage() {
   const [savingSettings, setSavingSettings] = useState(false);
   const [savingVoice, setSavingVoice] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
+  const canOutreach = !subscription.loading && subscription.hasFeature("outreach");
+  const canTwilio = !subscription.loading && subscription.hasFeature("twilio");
+  const canExport = !subscription.loading && subscription.hasFeature("csv_export");
 
   useEffect(() => {
+    if (subscription.loading) return;
     let mounted = true;
-    Promise.allSettled([getSettings(), getGmailConnection(), getTwilioConnection(), getVoiceSettings(), getBillingOverview()])
+    setLoading(true);
+    Promise.allSettled([
+      getSettings(),
+      canOutreach ? getGmailConnection() : Promise.resolve(null),
+      canTwilio ? getTwilioConnection() : Promise.resolve(null),
+      canTwilio ? getVoiceSettings() : Promise.resolve(null),
+      getBillingOverview(),
+    ])
       .then(([settings, gmail, twilio, voice, billingOverview]) => {
         if (!mounted) return;
         if (settings.status === "fulfilled") {
@@ -148,7 +169,7 @@ export default function SettingsPage() {
         }
         if (gmail.status === "fulfilled") setGmailStatus(gmail.value);
         if (twilio.status === "fulfilled") setTwilioStatus(twilio.value);
-        if (voice.status === "fulfilled") applyVoiceSettings(voice.value);
+        if (voice.status === "fulfilled" && voice.value) applyVoiceSettings(voice.value);
         if (billingOverview.status === "fulfilled") setBilling(billingOverview.value);
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "Settings failed to load"))
@@ -171,10 +192,11 @@ export default function SettingsPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [canOutreach, canTwilio, subscription.loading]);
 
-  const planKey = billing?.subscription?.access_plan || "free";
-  const leadLimit = planLeadLimits[planKey] ?? planLeadLimits.free;
+  const planKey = subscription.access?.plan_key || billing?.subscription?.access_plan || "free";
+  const leadLimit = subscription.access?.lead_limit ?? planLeadLimits[planKey] ?? planLeadLimits.free;
+  const leadsUsed = subscription.access?.leads_used ?? 0;
   const planName = titleCase(planKey);
   const renewalDate = billing?.subscription?.next_billed_at || billing?.subscription?.access_until || "";
   const billingStatus = billing?.subscription?.status || "None";
@@ -191,16 +213,20 @@ export default function SettingsPage() {
       {
         title: "Gmail",
         detail: gmailStatus?.is_connected ? gmailStatus.gmail_email || "Connected for outreach sending." : "Connect your mailbox for outreach sending.",
-        status: gmailStatus?.is_connected ? "Connected" : "Not connected",
+        status: canOutreach ? (gmailStatus?.is_connected ? "Connected" : "Not connected") : "Locked",
         icon: Mail,
         active: Boolean(gmailStatus?.is_connected),
+        feature: "outreach" as FeatureKey,
+        locked: !canOutreach,
       },
       {
         title: "Calling",
         detail: twilioStatus?.is_connected ? twilioStatus.phone_number || "Connected for AI SDR calls." : "Connect a phone account for AI SDR calls.",
-        status: twilioStatus?.is_connected ? "Connected" : "Not connected",
+        status: canTwilio ? (twilioStatus?.is_connected ? "Connected" : "Not connected") : "Locked",
         icon: PhoneCall,
         active: Boolean(twilioStatus?.is_connected),
+        feature: "twilio" as FeatureKey,
+        locked: !canTwilio,
       },
       {
         title: "Slack",
@@ -224,8 +250,16 @@ export default function SettingsPage() {
         active: false,
       },
     ],
-    [gmailStatus, twilioStatus, user],
+    [canOutreach, canTwilio, gmailStatus, twilioStatus, user],
   );
+
+  function onConnectGmail() {
+    if (!canOutreach) {
+      subscription.openUpgrade("outreach");
+      return;
+    }
+    window.location.href = gmailConnectUrl();
+  }
 
   async function onSavePreferences() {
     setSavingSettings(true);
@@ -245,6 +279,7 @@ export default function SettingsPage() {
   }
 
   async function refreshGmailStatus() {
+    if (!canOutreach) return;
     try {
       setGmailStatus(await getGmailConnection());
     } catch (error) {
@@ -253,6 +288,10 @@ export default function SettingsPage() {
   }
 
   async function onCheckGmail() {
+    if (!canOutreach) {
+      subscription.openUpgrade("outreach");
+      return;
+    }
     setCheckingGmail(true);
     try {
       const status = await checkGmailConnection();
@@ -267,6 +306,10 @@ export default function SettingsPage() {
   }
 
   async function onDisconnectGmail() {
+    if (!canOutreach) {
+      subscription.openUpgrade("outreach");
+      return;
+    }
     setDisconnectingGmail(true);
     try {
       setGmailStatus(await disconnectGmail());
@@ -279,6 +322,10 @@ export default function SettingsPage() {
   }
 
   async function onConnectTwilio() {
+    if (!canTwilio) {
+      subscription.openUpgrade("twilio");
+      return;
+    }
     if (!twilioForm.account_sid.trim() || !twilioForm.auth_token.trim()) {
       toast.error("Enter your calling account credentials");
       return;
@@ -305,6 +352,10 @@ export default function SettingsPage() {
   }
 
   async function onCheckTwilio() {
+    if (!canTwilio) {
+      subscription.openUpgrade("twilio");
+      return;
+    }
     setCheckingTwilio(true);
     try {
       const status = await checkTwilioConnection();
@@ -319,6 +370,10 @@ export default function SettingsPage() {
   }
 
   async function onDisconnectTwilio() {
+    if (!canTwilio) {
+      subscription.openUpgrade("twilio");
+      return;
+    }
     setDisconnectingTwilio(true);
     try {
       setTwilioStatus(await disconnectTwilio());
@@ -332,6 +387,10 @@ export default function SettingsPage() {
   }
 
   async function onSaveVoiceSettings() {
+    if (!canTwilio) {
+      subscription.openUpgrade("twilio");
+      return;
+    }
     setSavingVoice(true);
     try {
       const status = await saveVoiceSettings({
@@ -486,15 +545,15 @@ export default function SettingsPage() {
           <CardContent className="grid gap-5">
             <div className="grid gap-3 sm:grid-cols-3">
               <InfoTile label="Current Plan" value={planName} />
-              <InfoTile label="Lead Usage" value={`0 / ${leadLimit}`} />
+              <InfoTile label="Lead Usage" value={`${leadsUsed} / ${leadLimit}`} />
               <InfoTile label="Renewal Date" value={renewalDate ? dateLabel(renewalDate) : "Not scheduled"} />
             </div>
             <div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Lead quota</span>
-                <span>{leadLimit} monthly leads</span>
+                <span>{leadsUsed} / {leadLimit} monthly leads</span>
               </div>
-              <Progress className="mt-2 h-2" value={0} />
+              <Progress className="mt-2 h-2" value={leadLimit ? Math.min((leadsUsed / leadLimit) * 100, 100) : 0} />
             </div>
             <div className="flex flex-wrap gap-2">
               <Button asChild>
@@ -713,9 +772,13 @@ export default function SettingsPage() {
                   Use your connected Gmail account for outreach sending and reply sync.
                 </p>
               </div>
-              <Badge variant={gmailStatus?.is_connected ? "default" : "secondary"}>
-                {gmailStatus?.is_connected ? "Connected" : "Not connected"}
-              </Badge>
+              {canOutreach ? (
+                <Badge variant={gmailStatus?.is_connected ? "default" : "secondary"}>
+                  {gmailStatus?.is_connected ? "Connected" : "Not connected"}
+                </Badge>
+              ) : (
+                <PlanBadge feature="outreach" />
+              )}
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <InfoTile label="Mailbox" value={gmailStatus?.gmail_email || "Not connected"} />
@@ -723,12 +786,13 @@ export default function SettingsPage() {
               <InfoTile label="Health" value={gmailHealthLabel(gmailStatus)} />
             </div>
             {gmailStatus?.last_error ? <ErrorMessage message={gmailStatus.last_error} /> : null}
+            {!canOutreach ? (
+              <LockedInline feature="outreach" message="Gmail outreach is included with the Basic plan and higher." />
+            ) : null}
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button asChild>
-                <a href={gmailConnectUrl()}>
-                  <Mail data-icon="inline-start" />
-                  {gmailStatus?.is_connected ? "Reconnect Gmail" : "Connect Gmail"}
-                </a>
+              <Button onClick={onConnectGmail}>
+                {!canOutreach ? <LockKeyhole data-icon="inline-start" /> : <Mail data-icon="inline-start" />}
+                {gmailStatus?.is_connected ? "Reconnect Gmail" : "Connect Gmail"}
               </Button>
               <Button variant="outline" onClick={onCheckGmail} disabled={!gmailStatus?.is_connected || checkingGmail}>
                 <RefreshCw data-icon="inline-start" className={checkingGmail ? "animate-spin" : ""} />
@@ -752,9 +816,13 @@ export default function SettingsPage() {
                   Connect a phone account for AI SDR calling workflows.
                 </p>
               </div>
-              <Badge variant={twilioStatus?.is_connected ? "default" : "secondary"}>
-                {twilioStatus?.is_connected ? "Connected" : "Not connected"}
-              </Badge>
+              {canTwilio ? (
+                <Badge variant={twilioStatus?.is_connected ? "default" : "secondary"}>
+                  {twilioStatus?.is_connected ? "Connected" : "Not connected"}
+                </Badge>
+              ) : (
+                <PlanBadge feature="twilio" />
+              )}
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
               <InfoTile label="Phone Number" value={twilioStatus?.phone_number || "Not connected"} />
@@ -762,6 +830,9 @@ export default function SettingsPage() {
               <InfoTile label="Health" value={twilioHealthLabel(twilioStatus)} />
             </div>
             {twilioStatus?.last_error ? <ErrorMessage message={twilioStatus.last_error} /> : null}
+            {!canTwilio ? (
+              <LockedInline feature="twilio" message="Automated calling and voice settings are included with the Agency plan." />
+            ) : null}
             <div className="mt-4 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
               <Field>
                 <FieldLabel htmlFor="calling-account">Account SID</FieldLabel>
@@ -769,6 +840,7 @@ export default function SettingsPage() {
                   id="calling-account"
                   value={twilioForm.account_sid}
                   onChange={(event) => setTwilioForm((prev) => ({ ...prev, account_sid: event.target.value }))}
+                  disabled={!canTwilio}
                   placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
                 />
               </Field>
@@ -779,17 +851,18 @@ export default function SettingsPage() {
                   type="password"
                   value={twilioForm.auth_token}
                   onChange={(event) => setTwilioForm((prev) => ({ ...prev, auth_token: event.target.value }))}
+                  disabled={!canTwilio}
                   placeholder="Token"
                 />
               </Field>
               <div className="flex items-end">
                 <Button onClick={onConnectTwilio} disabled={connectingTwilio}>
-                  <PhoneCall data-icon="inline-start" />
+                  {!canTwilio ? <LockKeyhole data-icon="inline-start" /> : <PhoneCall data-icon="inline-start" />}
                   {connectingTwilio ? "Connecting" : twilioStatus?.is_connected ? "Reconnect" : "Connect"}
                 </Button>
               </div>
             </div>
-            {twilioStatus?.requires_phone_selection && twilioStatus.phone_numbers.length ? (
+            {canTwilio && twilioStatus?.requires_phone_selection && twilioStatus.phone_numbers.length ? (
               <div className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]">
                 <Field>
                   <FieldLabel>Phone Number</FieldLabel>
@@ -842,6 +915,7 @@ export default function SettingsPage() {
                 id="voice-id"
                 value={voiceForm.voice_id}
                 onChange={(event) => setVoiceForm((prev) => ({ ...prev, voice_id: event.target.value }))}
+                disabled={!canTwilio}
                 placeholder="Voice ID"
               />
             </Field>
@@ -851,7 +925,8 @@ export default function SettingsPage() {
                 id="voice-name"
                 value={voiceForm.voice_name}
                 onChange={(event) => setVoiceForm((prev) => ({ ...prev, voice_name: event.target.value }))}
-                placeholder="Internal label"
+                disabled={!canTwilio}
+                placeholder="Voice profile label"
               />
             </Field>
             <Field>
@@ -859,6 +934,7 @@ export default function SettingsPage() {
               <Select
                 value={voiceForm.speaking_speed}
                 onValueChange={(value) => setVoiceForm((prev) => ({ ...prev, speaking_speed: value as VoiceSpeed }))}
+                disabled={!canTwilio}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -880,6 +956,7 @@ export default function SettingsPage() {
                 id="voice-language"
                 value={voiceForm.language}
                 onChange={(event) => setVoiceForm((prev) => ({ ...prev, language: event.target.value }))}
+                disabled={!canTwilio}
                 placeholder="en"
               />
             </Field>
@@ -891,6 +968,7 @@ export default function SettingsPage() {
                 id="assistant-name"
                 value={voiceForm.assistant_name}
                 onChange={(event) => setVoiceForm((prev) => ({ ...prev, assistant_name: event.target.value }))}
+                disabled={!canTwilio}
                 placeholder="Ava"
               />
             </Field>
@@ -900,6 +978,7 @@ export default function SettingsPage() {
                 id="voice-business"
                 value={voiceForm.business_name}
                 onChange={(event) => setVoiceForm((prev) => ({ ...prev, business_name: event.target.value }))}
+                disabled={!canTwilio}
                 placeholder="LeadForge"
               />
             </Field>
@@ -910,13 +989,14 @@ export default function SettingsPage() {
               id="ai-greeting"
               value={voiceForm.ai_greeting}
               onChange={(event) => setVoiceForm((prev) => ({ ...prev, ai_greeting: event.target.value }))}
+              disabled={!canTwilio}
               placeholder="Hi, this is {assistant_name}. Am I speaking with someone from {business_name}?"
               className="min-h-24"
             />
           </Field>
           <div className="mt-4 flex justify-end">
             <Button onClick={onSaveVoiceSettings} disabled={savingVoice}>
-              <Save data-icon="inline-start" />
+              {!canTwilio ? <LockKeyhole data-icon="inline-start" /> : <Save data-icon="inline-start" />}
               {savingVoice ? "Saving" : "Save voice profile"}
             </Button>
           </div>
@@ -924,14 +1004,23 @@ export default function SettingsPage() {
 
         <SettingsSection icon={Download} title="Data & Privacy">
           <div className="grid gap-3">
-            <Button asChild variant="outline" className="justify-between">
-              <a href={csvExportUrl({ scope: "all" })}>
-                <span className="inline-flex items-center gap-2">
-                  <Download className="size-4" />
-                  Export Data
-                </span>
-                <ChevronRight className="size-4" />
-              </a>
+            <Button
+              variant="outline"
+              className="justify-between"
+              onClick={() => {
+                if (!canExport) {
+                  subscription.openUpgrade("csv_export");
+                  return;
+                }
+                window.location.href = csvExportUrl({ scope: "all" });
+              }}
+            >
+              <span className="inline-flex items-center gap-2">
+                {!canExport ? <LockKeyhole className="size-4" /> : <Download className="size-4" />}
+                Export Data
+                {!canExport ? <PlanBadge feature="csv_export" /> : null}
+              </span>
+              <ChevronRight className="size-4" />
             </Button>
             <Button asChild variant="outline" className="justify-between">
               <Link href="/privacy">
@@ -1024,7 +1113,7 @@ function ToggleRow({ checked, label, onChange }: { checked: boolean; label: stri
 function IntegrationCard({
   item,
 }: {
-  item: { active: boolean; detail: string; icon: LucideIcon; status: string; title: string };
+  item: { active: boolean; detail: string; feature?: FeatureKey; icon: LucideIcon; locked?: boolean; status: string; title: string };
 }) {
   const Icon = item.icon;
   return (
@@ -1033,10 +1122,25 @@ function IntegrationCard({
         <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-background/70 text-primary">
           <Icon className="size-4" />
         </div>
-        <Badge variant={item.active ? "default" : "secondary"}>{item.status}</Badge>
+        {item.locked && item.feature ? <PlanBadge feature={item.feature} /> : <Badge variant={item.active ? "default" : "secondary"}>{item.status}</Badge>}
       </div>
       <p className="mt-3 text-sm font-medium">{item.title}</p>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{item.detail}</p>
+    </div>
+  );
+}
+
+function LockedInline({ feature, message }: { feature: FeatureKey; message: string }) {
+  return (
+    <div className="mt-4 flex items-start gap-3 rounded-lg border border-primary/25 bg-primary/10 p-3 text-sm">
+      <LockKeyhole className="mt-0.5 size-4 shrink-0 text-primary" />
+      <div>
+        <p className="font-medium">Upgrade required</p>
+        <p className="mt-1 text-xs leading-5 text-muted-foreground">{message}</p>
+      </div>
+      <div className="ml-auto">
+        <PlanBadge feature={feature} />
+      </div>
     </div>
   );
 }

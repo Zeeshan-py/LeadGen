@@ -52,6 +52,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import { LockedSection, SubscriptionGate } from "@/components/subscription-gate";
 import {
   Select,
   SelectContent,
@@ -68,6 +69,7 @@ import {
 } from "@/lib/api";
 import { trackEvent } from "@/lib/analytics";
 import { compactNumber, dateLabel } from "@/lib/format";
+import { useSubscription } from "@/lib/subscription";
 import type { Analytics, Campaign, CrmLead, CrmLeadList, Outreach } from "@/lib/types";
 
 const chartConfig = {
@@ -91,6 +93,19 @@ type LeaderboardItem = {
 };
 
 export default function AnalyticsPage() {
+  return (
+    <SubscriptionGate feature="analytics" benefits={["Analytics dashboard", "Performance charts", "Conversion reporting"]}>
+      <AnalyticsWorkspace />
+    </SubscriptionGate>
+  );
+}
+
+function AnalyticsWorkspace() {
+  const subscription = useSubscription();
+  const subscriptionLoading = subscription.loading;
+  const canUseCampaigns = !subscriptionLoading && subscription.hasFeature("campaigns");
+  const canUseCrm = !subscriptionLoading && subscription.hasFeature("crm");
+  const canUseOutreach = !subscriptionLoading && subscription.hasFeature("outreach");
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [crm, setCrm] = useState<CrmLeadList | null>(null);
@@ -99,12 +114,21 @@ export default function AnalyticsPage() {
   const [segment, setSegment] = useState("all");
 
   useEffect(() => {
+    if (subscriptionLoading) return;
     trackEvent("analytics_usage", { action: "view_analytics" });
+    const guarded = async <T,>(allowed: boolean, loader: () => Promise<T>, fallback: T) => {
+      if (!allowed) return fallback;
+      try {
+        return await loader();
+      } catch {
+        return fallback;
+      }
+    };
     Promise.all([
       getAnalytics(),
-      getCampaigns().catch(() => [] as Campaign[]),
-      getCrmLeads({ limit: "500" }).catch(() => null),
-      getOutreach().catch(() => [] as Outreach[]),
+      guarded(canUseCampaigns, getCampaigns, [] as Campaign[]),
+      guarded(canUseCrm, () => getCrmLeads({ limit: "500" }), null),
+      guarded(canUseOutreach, getOutreach, [] as Outreach[]),
     ])
       .then(([analyticsResult, campaignRows, crmRows, outreachRows]) => {
         setAnalytics(analyticsResult);
@@ -113,7 +137,7 @@ export default function AnalyticsPage() {
         setOutreach(outreachRows);
       })
       .catch((error) => toast.error(error.message));
-  }, []);
+  }, [canUseCampaigns, canUseCrm, canUseOutreach, subscriptionLoading]);
 
   const leadTrend = useMemo(() => filterTrend(analytics?.lead_generation_per_day ?? [], dateRange), [analytics, dateRange]);
   const emailTrend = useMemo(() => filterEmailTrend(analytics?.emails_per_day ?? [], dateRange), [analytics, dateRange]);
@@ -238,30 +262,34 @@ export default function AnalyticsPage() {
           </ChartContainer>
         </ChartPanel>
 
-        <ChartPanel title="AI SDR Call Analytics" icon={PhoneCall}>
-          <ChartContainer config={chartConfig} className="h-[280px] w-full">
-            <BarChart data={callAnalytics}>
-              <CartesianGrid vertical={false} />
-              <XAxis dataKey="name" tickLine={false} axisLine={false} />
-              <YAxis tickLine={false} axisLine={false} width={34} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="value" radius={6} fill="var(--color-replies)" />
-            </BarChart>
-          </ChartContainer>
-        </ChartPanel>
+        <LockedSection feature="ai_sdr" benefits={["AI SDR analytics", "Call performance", "Automated calling insights"]}>
+          <ChartPanel title="AI SDR Call Analytics" icon={PhoneCall}>
+            <ChartContainer config={chartConfig} className="h-[280px] w-full">
+              <BarChart data={callAnalytics}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                <YAxis tickLine={false} axisLine={false} width={34} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="value" radius={6} fill="var(--color-replies)" />
+              </BarChart>
+            </ChartContainer>
+          </ChartPanel>
+        </LockedSection>
 
-        <ChartPanel title="Revenue & ROI Dashboard" icon={TrendingUp}>
-          <ChartContainer config={chartConfig} className="h-[280px] w-full">
-            <ComposedChart data={revenue.series}>
-              <CartesianGrid vertical={false} />
-              <XAxis dataKey="name" tickLine={false} axisLine={false} />
-              <YAxis tickLine={false} axisLine={false} width={42} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="cost" radius={6} fill="var(--color-cost)" />
-              <Line type="monotone" dataKey="revenue" stroke="var(--color-revenue)" strokeWidth={2} />
-            </ComposedChart>
-          </ChartContainer>
-        </ChartPanel>
+        <LockedSection feature="advanced_filters" benefits={["Revenue modeling", "ROI dashboard", "Advanced performance views"]}>
+          <ChartPanel title="Revenue & ROI Dashboard" icon={TrendingUp}>
+            <ChartContainer config={chartConfig} className="h-[280px] w-full">
+              <ComposedChart data={revenue.series}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                <YAxis tickLine={false} axisLine={false} width={42} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="cost" radius={6} fill="var(--color-cost)" />
+                <Line type="monotone" dataKey="revenue" stroke="var(--color-revenue)" strokeWidth={2} />
+              </ComposedChart>
+            </ChartContainer>
+          </ChartPanel>
+        </LockedSection>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-3">
@@ -277,31 +305,35 @@ export default function AnalyticsPage() {
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-        <ChartPanel title="Campaign Performance Comparison" icon={BarChart3}>
-          <ChartContainer config={chartConfig} className="h-[320px] w-full">
-            <BarChart data={campaignPerformance}>
-              <CartesianGrid vertical={false} />
-              <XAxis dataKey="name" tickLine={false} axisLine={false} />
-              <YAxis tickLine={false} axisLine={false} width={34} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Bar dataKey="leads" radius={6} fill="var(--color-leads)" />
-              <Bar dataKey="emails" radius={6} fill="var(--color-emails)" />
-              <ChartLegend content={<ChartLegendContent />} />
-            </BarChart>
-          </ChartContainer>
-        </ChartPanel>
+        <LockedSection feature="campaigns" benefits={["Campaign analytics", "Campaign comparison", "Campaign history"]}>
+          <ChartPanel title="Campaign Performance Comparison" icon={BarChart3}>
+            <ChartContainer config={chartConfig} className="h-[320px] w-full">
+              <BarChart data={campaignPerformance}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                <YAxis tickLine={false} axisLine={false} width={34} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Bar dataKey="leads" radius={6} fill="var(--color-leads)" />
+                <Bar dataKey="emails" radius={6} fill="var(--color-emails)" />
+                <ChartLegend content={<ChartLegendContent />} />
+              </BarChart>
+            </ChartContainer>
+          </ChartPanel>
+        </LockedSection>
 
-        <ChartPanel title="Sales Forecasting Using AI" icon={Bot}>
-          <ChartContainer config={chartConfig} className="h-[320px] w-full">
-            <AreaChart data={forecast}>
-              <CartesianGrid vertical={false} />
-              <XAxis dataKey="date" tickLine={false} axisLine={false} />
-              <YAxis tickLine={false} axisLine={false} width={34} />
-              <ChartTooltip content={<ChartTooltipContent />} />
-              <Area type="monotone" dataKey="forecast" stroke="var(--color-forecast)" fill="var(--color-forecast)" fillOpacity={0.2} strokeWidth={2} />
-            </AreaChart>
-          </ChartContainer>
-        </ChartPanel>
+        <LockedSection feature="advanced_filters" benefits={["Sales forecasting", "Advanced analytics", "Pipeline predictions"]}>
+          <ChartPanel title="Sales Forecasting Using AI" icon={Bot}>
+            <ChartContainer config={chartConfig} className="h-[320px] w-full">
+              <AreaChart data={forecast}>
+                <CartesianGrid vertical={false} />
+                <XAxis dataKey="date" tickLine={false} axisLine={false} />
+                <YAxis tickLine={false} axisLine={false} width={34} />
+                <ChartTooltip content={<ChartTooltipContent />} />
+                <Area type="monotone" dataKey="forecast" stroke="var(--color-forecast)" fill="var(--color-forecast)" fillOpacity={0.2} strokeWidth={2} />
+              </AreaChart>
+            </ChartContainer>
+          </ChartPanel>
+        </LockedSection>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-3">
@@ -324,13 +356,17 @@ export default function AnalyticsPage() {
           </div>
         </ChartPanel>
 
-        <ChartPanel title="AI Lead Score Distribution" icon={Bot}>
-          <RankedBars data={scoreDistribution} valueLabel="leads" />
-        </ChartPanel>
+        <LockedSection feature="advanced_filters" benefits={["AI lead scoring", "Advanced segmentation", "Quality distribution"]}>
+          <ChartPanel title="AI Lead Score Distribution" icon={Bot}>
+            <RankedBars data={scoreDistribution} valueLabel="leads" />
+          </ChartPanel>
+        </LockedSection>
 
-        <ChartPanel title="Lost Lead Reasons Analysis" icon={TrendingDown}>
-          <RankedBars data={lostReasons} valueLabel="lost" />
-        </ChartPanel>
+        <LockedSection feature="advanced_filters" benefits={["Lost reason analysis", "Advanced funnel insights", "Pipeline optimization"]}>
+          <ChartPanel title="Lost Lead Reasons Analysis" icon={TrendingDown}>
+            <RankedBars data={lostReasons} valueLabel="lost" />
+          </ChartPanel>
+        </LockedSection>
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">

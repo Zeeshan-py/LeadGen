@@ -18,12 +18,14 @@ import {
   Gauge,
   Home,
   Layers3,
+  LockKeyhole,
   LogOut,
   Mail,
   Settings,
   Sparkles,
   Users,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { motion } from "framer-motion";
 
 import {
@@ -43,25 +45,29 @@ import {
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PlanBadge, UpgradeModal } from "@/components/subscription-gate";
 import { useAuth } from "@/lib/auth";
+import { useSubscription } from "@/lib/subscription";
+import type { FeatureKey } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: Home },
   { href: "/lead-generator", label: "Lead Generator", icon: Sparkles },
-  { href: "/ai-sdr", label: "AI SDR", icon: Bot },
+  { href: "/ai-sdr", label: "AI SDR", icon: Bot, feature: "ai_sdr" },
   { href: "/leads", label: "Leads", icon: Users },
-  { href: "/crm", label: "CRM", icon: ContactRound },
-  { href: "/campaigns", label: "Campaigns", icon: Layers3 },
-  { href: "/outreach", label: "Outreach", icon: Mail },
-  { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/crm", label: "CRM", icon: ContactRound, feature: "crm" },
+  { href: "/campaigns", label: "Campaigns", icon: Layers3, feature: "campaigns" },
+  { href: "/outreach", label: "Outreach", icon: Mail, feature: "outreach" },
+  { href: "/analytics", label: "Analytics", icon: BarChart3, feature: "analytics" },
   { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/settings", label: "Settings", icon: Settings },
-];
+] satisfies Array<{ href: string; label: string; icon: LucideIcon; feature?: FeatureKey }>;
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const subscription = useSubscription();
   const normalizedPath = pathname === "/" ? pathname : pathname.replace(/\/+$/, "");
   const current = nav.find((item) => item.href === normalizedPath) ?? nav[0];
 
@@ -86,14 +92,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 {nav.map((item) => {
                   const Icon = item.icon;
                   const active = normalizedPath === item.href;
+                  const locked = Boolean(item.feature && !subscription.loading && !subscription.hasFeature(item.feature));
                   return (
                     <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton asChild tooltip={item.label} isActive={active}>
-                        <Link href={item.href}>
+                      {locked && item.feature ? (
+                        <SidebarMenuButton
+                          tooltip={`${item.label} requires ${subscription.requiredPlanFor(item.feature)}`}
+                          isActive={active}
+                          aria-label={`${item.label} locked`}
+                          onClick={() => subscription.openUpgrade(item.feature)}
+                        >
                           <Icon />
                           <span>{item.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
+                          <LockKeyhole className="ml-auto size-3.5 text-muted-foreground" />
+                        </SidebarMenuButton>
+                      ) : (
+                        <SidebarMenuButton asChild tooltip={item.label} isActive={active}>
+                          <Link href={item.href}>
+                            <Icon />
+                            <span>{item.label}</span>
+                            {item.feature ? (
+                              <span className="ml-auto">
+                                <PlanBadge feature={item.feature} />
+                              </span>
+                            ) : null}
+                          </Link>
+                        </SidebarMenuButton>
+                      )}
                     </SidebarMenuItem>
                   );
                 })}
@@ -125,7 +150,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="outline" className="hidden border-primary/30 bg-primary/10 text-primary sm:inline-flex">
-              {user?.is_admin ? "Admin" : "Private"}
+              {subscription.access?.plan_name ?? (user?.is_admin ? "Admin" : "Private")}
             </Badge>
             <div className="hidden items-center gap-2 rounded-lg border border-border/70 bg-card/70 px-3 py-2 text-xs text-muted-foreground md:flex">
               <Gauge className="size-4 text-accent" />
@@ -154,6 +179,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </motion.main>
       </SidebarInset>
+      <UpgradeModal />
     </SidebarProvider>
   );
 }

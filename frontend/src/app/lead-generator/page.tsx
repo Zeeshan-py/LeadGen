@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Play, Sparkles } from "lucide-react";
+import { LockKeyhole, Play, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { PipelineProgress } from "@/components/pipeline-progress";
+import { PlanBadge } from "@/components/subscription-gate";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { generationEventsUrl, getGenerationJob, getLatestGenerationJob, startGeneration } from "@/lib/api";
 import { trackLeadGeneration, trackOutreachCampaign } from "@/lib/analytics";
+import { useSubscription } from "@/lib/subscription";
 import {
   businessTypes,
   continents,
@@ -36,6 +38,7 @@ function isTerminalJob(job: GenerationJob) {
 }
 
 export default function LeadGeneratorPage() {
+  const subscription = useSubscription();
   const [form, setForm] = useState({
     continent: "North America" as Continent,
     country: "United States",
@@ -48,11 +51,29 @@ export default function LeadGeneratorPage() {
   const [running, setRunning] = useState(false);
   const sourceRef = useRef<EventSource | null>(null);
   const countries = countriesByContinent[form.continent];
+  const leadsRemaining = subscription.access?.leads_remaining ?? 10;
+  const leadLimit = subscription.access?.lead_limit ?? 10;
+  const leadsUsed = subscription.access?.leads_used ?? 0;
+  const leadLimitReached = leadsRemaining <= 0;
+  const selectableLeadLimits = useMemo(() => {
+    if (leadLimitReached) return [];
+    const limits = leadLimits.filter((limit) => limit <= leadsRemaining);
+    if (!limits.includes(leadsRemaining)) limits.push(leadsRemaining);
+    return limits.sort((a, b) => a - b);
+  }, [leadLimitReached, leadsRemaining]);
 
   const canRun = useMemo(
-    () => form.country.trim() && form.business_type.trim() && form.max_leads > 0,
-    [form],
+    () => form.country.trim() && form.business_type.trim() && form.max_leads > 0 && form.max_leads <= leadsRemaining,
+    [form, leadsRemaining],
   );
+
+  useEffect(() => {
+    if (subscription.loading || leadLimitReached) return;
+    const nextMax = Math.max(1, Math.min(form.max_leads, leadsRemaining));
+    if (nextMax !== form.max_leads) {
+      setForm((prev) => ({ ...prev, max_leads: nextMax }));
+    }
+  }, [form.max_leads, leadLimitReached, leadsRemaining, subscription.loading]);
 
   const closeStream = useCallback(() => {
     sourceRef.current?.close();
@@ -127,6 +148,9 @@ export default function LeadGeneratorPage() {
 
   async function onGenerate() {
     if (!canRun || running) {
+      if (leadLimitReached || form.max_leads > leadsRemaining) {
+        subscription.openUpgrade("lead_generation", ["Higher monthly lead limits", "More prospect generation", "Premium workspace capacity"]);
+      }
       return;
     }
     setRunning(true);
@@ -163,6 +187,18 @@ export default function LeadGeneratorPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 rounded-lg border border-border/70 bg-secondary/25 p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Monthly lead usage</span>
+              <span className="font-medium">{leadsUsed}/{leadLimit}</span>
+            </div>
+            {leadLimitReached ? (
+              <div className="mt-3 rounded-md border border-primary/25 bg-primary/10 p-3">
+                <p className="text-sm font-medium">You&apos;ve reached your monthly lead limit.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Increase your lead limit by upgrading your plan.</p>
+              </div>
+            ) : null}
+          </div>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="continent">Continent</FieldLabel>
@@ -234,18 +270,39 @@ export default function LeadGeneratorPage() {
             </Field>
             <Field>
               <FieldLabel>Website Filter</FieldLabel>
-              <Select value={form.website_mode} onValueChange={(value) => setForm((prev) => ({ ...prev, website_mode: value }))}>
+              <Select
+                value={form.website_mode}
+                onValueChange={(value) => {
+                  if (value !== "withWebsite" && !subscription.hasFeature("standard_filters")) {
+                    subscription.openUpgrade("standard_filters");
+                    return;
+                  }
+                  if (value === "allPlaces" && !subscription.hasFeature("advanced_filters")) {
+                    subscription.openUpgrade("advanced_filters");
+                    return;
+                  }
+                  setForm((prev) => ({ ...prev, website_mode: value }));
+                }}
+              >
                 <SelectTrigger aria-label="Website Filter">
                   <SelectValue placeholder="Website filter" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
                     <SelectItem value="withWebsite">With website</SelectItem>
-                    <SelectItem value="withoutWebsite">Without Website</SelectItem>
-                    <SelectItem value="allPlaces">All</SelectItem>
+                    <SelectItem value="withoutWebsite" disabled={!subscription.hasFeature("standard_filters")}>
+                      Without Website
+                    </SelectItem>
+                    <SelectItem value="allPlaces" disabled={!subscription.hasFeature("advanced_filters")}>
+                      All Places
+                    </SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
+              <div className="flex flex-wrap gap-2">
+                <PlanBadge feature="standard_filters" />
+                <PlanBadge feature="advanced_filters" />
+              </div>
             </Field>
             <Field>
               <FieldLabel htmlFor="max_leads">Number of Leads</FieldLabel>
@@ -255,16 +312,16 @@ export default function LeadGeneratorPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
-                    {leadLimits.map((limit) => (
+                    {selectableLeadLimits.map((limit) => (
                       <SelectItem key={limit} value={String(limit)}>{limit} leads</SelectItem>
                     ))}
                   </SelectGroup>
                 </SelectContent>
               </Select>
             </Field>
-            <Button size="lg" className="w-full" disabled={!canRun || running} onClick={onGenerate}>
-              <Play data-icon="inline-start" />
-              Generate Leads
+            <Button size="lg" className="w-full" disabled={running || (!canRun && !leadLimitReached)} onClick={onGenerate}>
+              {leadLimitReached ? <LockKeyhole data-icon="inline-start" /> : <Play data-icon="inline-start" />}
+              {leadLimitReached ? "Upgrade to Generate More" : "Generate Leads"}
             </Button>
           </FieldGroup>
         </CardContent>

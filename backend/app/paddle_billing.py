@@ -60,7 +60,9 @@ def billing_plans(settings: Settings) -> list[BillingPlan]:
                 "Lead generation workspace",
                 "CRM pipeline",
                 "Gmail outreach connection",
+                "Outreach up to 7 emails per day",
                 "Analytics dashboard",
+                "CSV export",
             ],
         ),
         BillingPlan(
@@ -77,10 +79,10 @@ def billing_plans(settings: Settings) -> list[BillingPlan]:
             features=[
                 "1,300 leads per month",
                 "Everything in Basic",
-                "AI SDR workspace",
-                "Twilio calling connection",
-                "Voice settings with Cartesia",
-                "Reply sync and campaign tracking",
+                "Campaign management",
+                "Advanced filters",
+                "Outreach up to 20 emails per day",
+                "Full CRM and analytics",
             ],
         ),
         BillingPlan(
@@ -96,8 +98,11 @@ def billing_plans(settings: Settings) -> list[BillingPlan]:
             features=[
                 "2,400 leads per month",
                 "Everything in Agent",
-                "Priority workflow support",
-                "Advanced outreach operations",
+                "AI SDR workspace",
+                "Twilio calling and voice settings",
+                "Campaign automation",
+                "Unlimited outreach",
+                "Reply sync",
                 "Agency-ready reporting",
             ],
         ),

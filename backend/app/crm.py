@@ -50,8 +50,9 @@ from .services.crm import (
     record_crm_activity,
     replace_lead_tags,
 )
+from .subscription_access import require_feature_dependency
 
-router = APIRouter(prefix="/crm", tags=["crm"])
+router = APIRouter(prefix="/crm", tags=["crm"], dependencies=[Depends(require_feature_dependency("crm"))])
 settings = get_settings()
 
 LEAD_LOAD_OPTIONS = (

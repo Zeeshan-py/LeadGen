@@ -29,8 +29,9 @@ from .twilio_connections import (
     upsert_voice_settings,
     validate_twilio_credentials,
 )
+from .subscription_access import require_feature_dependency
 
-router = APIRouter(prefix="/twilio", tags=["twilio"])
+router = APIRouter(prefix="/twilio", tags=["twilio"], dependencies=[Depends(require_feature_dependency("twilio"))])
 
 
 @router.get("/status", response_model=TwilioConnectionStatus)

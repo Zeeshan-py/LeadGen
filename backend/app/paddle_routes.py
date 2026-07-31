@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
@@ -42,6 +43,7 @@ from .schemas import (
     PaddlePortalSessionResponse,
     PaddleSubscriptionRead,
 )
+from .subscription_access import subscription_access_payload
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["billing"])
@@ -59,6 +61,14 @@ def get_my_billing(
     settings: Settings = Depends(get_settings),
 ) -> BillingOverview:
     return billing_overview(db, current_user, settings)
+
+
+@router.get("/access")
+def get_subscription_access(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> dict[str, Any]:
+    return subscription_access_payload(db, current_user)
 
 
 @router.post("/checkout", response_model=PaddleCheckoutSession)

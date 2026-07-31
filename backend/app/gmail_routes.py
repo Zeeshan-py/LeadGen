@@ -24,8 +24,9 @@ from .gmail_connections import (
 )
 from .models import GmailConnection, User
 from .schemas import GmailConnectionStatus
+from .subscription_access import require_feature_dependency
 
-router = APIRouter(prefix="/gmail", tags=["gmail"])
+router = APIRouter(prefix="/gmail", tags=["gmail"], dependencies=[Depends(require_feature_dependency("outreach"))])
 logger = logging.getLogger(__name__)
 
 GMAIL_STATE_COOKIE = "leadforge_gmail_oauth_state"

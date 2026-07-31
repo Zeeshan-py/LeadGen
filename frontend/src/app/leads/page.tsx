@@ -1,7 +1,7 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
-import { Download, Edit3, ExternalLink, Link2, MapPin, MoreHorizontal, Phone, Search } from "lucide-react";
+import { Download, Edit3, ExternalLink, Link2, LockKeyhole, MapPin, MoreHorizontal, Phone, Search } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/status-badge";
@@ -35,8 +35,10 @@ import {
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { PlanBadge } from "@/components/subscription-gate";
 import { csvExportUrl, getCampaigns, getLeads, startManualSdrBridgeCall, updateLead } from "@/lib/api";
 import { businessTypes, continents, countriesByContinent } from "@/lib/markets";
+import { useSubscription } from "@/lib/subscription";
 import type { Campaign, Lead } from "@/lib/types";
 
 const socialPlatforms = [
@@ -49,6 +51,10 @@ const socialPlatforms = [
 ] as const;
 
 export default function LeadsPage() {
+  const subscription = useSubscription();
+  const subscriptionLoading = subscription.loading;
+  const canUseCampaigns = !subscriptionLoading && subscription.hasFeature("campaigns");
+  const openUpgrade = subscription.openUpgrade;
   const [leads, setLeads] = useState<Lead[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [search, setSearch] = useState("");
@@ -64,14 +70,18 @@ export default function LeadsPage() {
   const [editing, setEditing] = useState<Lead | null>(null);
 
   useEffect(() => {
-    getCampaigns().then(setCampaigns).catch((error) => toast.error(error.message));
+    if (canUseCampaigns) {
+      getCampaigns().then(setCampaigns).catch((error) => toast.error(error.message));
+    }
 
     const campaignFromUrl = new URLSearchParams(window.location.search).get("campaign_id");
-    if (campaignFromUrl) {
+    if (campaignFromUrl && canUseCampaigns) {
       setCampaignId(campaignFromUrl);
       setScope("all");
+    } else if (campaignFromUrl && !subscriptionLoading) {
+      openUpgrade("campaigns");
     }
-  }, []);
+  }, [canUseCampaigns, openUpgrade, subscriptionLoading]);
 
   const leadParams = useMemo(() => {
     const params: Record<string, string> = { sort, scope };
@@ -93,6 +103,10 @@ export default function LeadsPage() {
 
   async function saveEdit() {
     if (!editing) return;
+    if (!subscription.hasFeature("crm")) {
+      subscription.openUpgrade("crm");
+      return;
+    }
     try {
       const updated = await updateLead(editing.id, editing);
       setLeads((prev) => prev.map((lead) => (lead.id === updated.id ? updated : lead)));
@@ -104,6 +118,10 @@ export default function LeadsPage() {
   }
 
   async function bulkStatus(nextStatus: string) {
+    if (!subscription.hasFeature("crm")) {
+      subscription.openUpgrade("crm");
+      return;
+    }
     await Promise.all(selectedLeads.map((lead) => updateLead(lead.id, { lead_status: nextStatus })));
     setSelected(new Set());
     const refreshed = await getLeads(leadParams);
@@ -141,6 +159,10 @@ export default function LeadsPage() {
             <Select
               value={campaignId || "all"}
               onValueChange={(value) => {
+                if (value !== "all" && !subscription.hasFeature("campaigns")) {
+                  subscription.openUpgrade("campaigns");
+                  return;
+                }
                 const nextCampaignId = value === "all" ? "" : value;
                 setCampaignId(nextCampaignId);
                 if (nextCampaignId) setScope("all");
@@ -182,18 +204,40 @@ export default function LeadsPage() {
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <Select value={contact} onValueChange={setContact}>
+            <Select
+              value={contact}
+              onValueChange={(value) => {
+                if (["email", "phone"].includes(value) && !subscription.hasFeature("standard_filters")) {
+                  subscription.openUpgrade("standard_filters");
+                  return;
+                }
+                if (value === "social" && !subscription.hasFeature("advanced_filters")) {
+                  subscription.openUpgrade("advanced_filters");
+                  return;
+                }
+                setContact(value);
+              }}
+            >
               <SelectTrigger><SelectValue placeholder="Contact data" /></SelectTrigger>
               <SelectContent>
                 <SelectGroup>
                   <SelectItem value="all">Any Contact Data</SelectItem>
-                  <SelectItem value="email">Has Email</SelectItem>
-                  <SelectItem value="phone">Has Phone</SelectItem>
-                  <SelectItem value="social">Has Social Links</SelectItem>
+                  <SelectItem value="email" disabled={!subscription.hasFeature("standard_filters")}>Has Email</SelectItem>
+                  <SelectItem value="phone" disabled={!subscription.hasFeature("standard_filters")}>Has Phone</SelectItem>
+                  <SelectItem value="social" disabled={!subscription.hasFeature("advanced_filters")}>Has Social Links</SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
-            <Select value={outreachStatus} onValueChange={setOutreachStatus}>
+            <Select
+              value={outreachStatus}
+              onValueChange={(value) => {
+                if (value !== "all" && !subscription.hasFeature("standard_filters")) {
+                  subscription.openUpgrade("standard_filters");
+                  return;
+                }
+                setOutreachStatus(value);
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Outreach" />
               </SelectTrigger>
@@ -201,11 +245,11 @@ export default function LeadsPage() {
                 <SelectGroup>
                   <SelectItem value="all">All Outreach</SelectItem>
                   <SelectItem value="not_started">Not Started</SelectItem>
-                  <SelectItem value="sent">Sent</SelectItem>
-                  <SelectItem value="opened">Opened</SelectItem>
-                  <SelectItem value="replied">Replied</SelectItem>
-                  <SelectItem value="closed">Closed</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
+                  <SelectItem value="sent" disabled={!subscription.hasFeature("standard_filters")}>Sent</SelectItem>
+                  <SelectItem value="opened" disabled={!subscription.hasFeature("standard_filters")}>Opened</SelectItem>
+                  <SelectItem value="replied" disabled={!subscription.hasFeature("standard_filters")}>Replied</SelectItem>
+                  <SelectItem value="closed" disabled={!subscription.hasFeature("standard_filters")}>Closed</SelectItem>
+                  <SelectItem value="failed" disabled={!subscription.hasFeature("standard_filters")}>Failed</SelectItem>
                 </SelectGroup>
               </SelectContent>
             </Select>
@@ -222,24 +266,40 @@ export default function LeadsPage() {
             </Select>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" disabled={!selected.size}>Bulk Actions</Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuGroup>
-                  <DropdownMenuItem onClick={() => bulkStatus("contacted")}>Mark contacted</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => bulkStatus("won")}>Mark won</DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => bulkStatus("lost")}>Mark lost</DropdownMenuItem>
-                </DropdownMenuGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button asChild>
-              <a href={csvExportUrl({ scope, campaignId })}>
-                <Download data-icon="inline-start" />
+            {subscription.hasFeature("crm") ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" disabled={!selected.size}>Bulk Actions</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem onClick={() => bulkStatus("contacted")}>Mark contacted</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => bulkStatus("won")}>Mark won</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => bulkStatus("lost")}>Mark lost</DropdownMenuItem>
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button variant="outline" onClick={() => subscription.openUpgrade("crm")}>
+                <LockKeyhole data-icon="inline-start" />
+                Bulk Actions
+                <PlanBadge feature="crm" />
+              </Button>
+            )}
+            {subscription.hasFeature("csv_export") ? (
+              <Button asChild>
+                <a href={csvExportUrl({ scope, campaignId })}>
+                  <Download data-icon="inline-start" />
+                  Export CSV
+                </a>
+              </Button>
+            ) : (
+              <Button onClick={() => subscription.openUpgrade("csv_export")}>
+                <LockKeyhole data-icon="inline-start" />
                 Export CSV
-              </a>
-            </Button>
+                <PlanBadge feature="csv_export" />
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -329,7 +389,7 @@ export default function LeadsPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuGroup>
-                        <DropdownMenuItem onClick={() => setEditing(lead)}>
+                        <DropdownMenuItem onClick={() => subscription.hasFeature("crm") ? setEditing(lead) : subscription.openUpgrade("crm")}>
                           <Edit3 />
                           Edit
                         </DropdownMenuItem>
@@ -350,8 +410,8 @@ export default function LeadsPage() {
                           </DropdownMenuItem>
                         ) : null}
                         {lead.phone ? (
-                          <DropdownMenuItem onClick={() => startManualLeadCall(lead)}>
-                            <Phone />
+                          <DropdownMenuItem onClick={() => subscription.hasFeature("ai_sdr") ? startManualLeadCall(lead) : subscription.openUpgrade("ai_sdr")}>
+                            {subscription.hasFeature("ai_sdr") ? <Phone /> : <LockKeyhole />}
                             Manual SDR Call
                           </DropdownMenuItem>
                         ) : null}
@@ -449,16 +509,23 @@ async function startManualLeadCall(lead: Lead) {
 }
 
 function ManualSdrLeadCallButton({ lead }: { lead: Lead }) {
+  const subscription = useSubscription();
   return (
     <Button
       type="button"
       size="icon-xs"
       variant="outline"
-      onClick={() => startManualLeadCall(lead)}
-      title="Manual SDR call through Twilio. AI will not speak."
+      onClick={() => {
+        if (!subscription.hasFeature("ai_sdr")) {
+          subscription.openUpgrade("ai_sdr", ["AI SDR", "Automated Calling", "Lead call workflows"]);
+          return;
+        }
+        startManualLeadCall(lead);
+      }}
+      title={subscription.hasFeature("ai_sdr") ? "Manual SDR call through Twilio. AI will not speak." : "Requires Agency plan"}
       aria-label={`Manual SDR call ${lead.business_name}`}
     >
-      <Phone />
+      {subscription.hasFeature("ai_sdr") ? <Phone /> : <LockKeyhole />}
     </Button>
   );
 }

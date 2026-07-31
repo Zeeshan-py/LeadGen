@@ -16,8 +16,17 @@ import {
 } from "@/components/ui/card";
 import { csvExportUrl, getCampaigns } from "@/lib/api";
 import type { Campaign } from "@/lib/types";
+import { SubscriptionGate } from "@/components/subscription-gate";
 
 export default function CampaignsPage() {
+  return (
+    <SubscriptionGate feature="campaigns" benefits={["Campaign Management", "Campaign exports", "Performance history"]}>
+      <CampaignsWorkspace />
+    </SubscriptionGate>
+  );
+}
+
+function CampaignsWorkspace() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
 
   useEffect(() => {
