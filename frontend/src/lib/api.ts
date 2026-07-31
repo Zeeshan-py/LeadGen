@@ -7,6 +7,9 @@
 
 import type {
   Analytics,
+  BillingHistory,
+  BillingOverview,
+  BillingPlansResponse,
   Campaign,
   CrmLeadDetail,
   CrmLeadList,
@@ -182,6 +185,44 @@ export function getSettings() {
 
 export function getGoogleSheetsHealth() {
   return request<GoogleSheetsHealth>("/health/google");
+}
+
+export function getBillingPlans() {
+  return request<BillingPlansResponse>("/billing/plans");
+}
+
+export function getBillingOverview() {
+  return request<BillingOverview>("/billing/me");
+}
+
+export function getBillingHistory() {
+  return request<BillingHistory>("/billing/history");
+}
+
+export function createBillingPortalSession() {
+  return request<{ url: string; urls: Record<string, unknown> }>("/billing/portal-session", {
+    method: "POST",
+  });
+}
+
+export function changeSubscriptionPlan(
+  subscriptionId: string,
+  payload: { price_id: string; proration_billing_mode?: string },
+) {
+  return request<BillingOverview["subscription"]>(`/billing/subscriptions/${subscriptionId}/change-plan`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function cancelSubscription(
+  subscriptionId: string,
+  payload: { effective_from: "next_billing_period" | "immediately" },
+) {
+  return request<BillingOverview["subscription"]>(`/billing/subscriptions/${subscriptionId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export function saveSettings(payload: Record<string, unknown>) {

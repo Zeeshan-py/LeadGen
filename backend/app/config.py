@@ -61,6 +61,29 @@ class Settings(BaseSettings):
     database_max_overflow: int = Field(default=10, validation_alias="DATABASE_MAX_OVERFLOW")
     frontend_static_dir: Path = Field(default=Path("./frontend"), validation_alias="FRONTEND_STATIC_DIR")
 
+    paddle_environment: str = Field(default="sandbox", validation_alias=AliasChoices("PADDLE_ENV", "PADDLE_ENVIRONMENT"))
+    paddle_sandbox_api_key: str = Field(default="", validation_alias="PADDLE_SANDBOX_API_KEY")
+    paddle_live_api_key: str = Field(default="", validation_alias=AliasChoices("PADDLE_LIVE_API_KEY", "PADDLE_API_KEY"))
+    paddle_webhook_secret: str = Field(
+        default="",
+        validation_alias=AliasChoices("PADDLE_WEBHOOK_SECRET", "PADDLE_NOTIFICATION_WEBHOOK_SECRET"),
+    )
+    paddle_webhook_tolerance_seconds: int = Field(default=300, validation_alias="PADDLE_WEBHOOK_TOLERANCE_SECONDS")
+    paddle_success_url: str = Field(default="", validation_alias="PADDLE_SUCCESS_URL")
+    paddle_cancel_url: str = Field(default="", validation_alias="PADDLE_CANCEL_URL")
+    paddle_price_basic_monthly: str = Field(
+        default="pri_01kys3qbxn3wzm9qj531997ksz",
+        validation_alias="PADDLE_PRICE_BASIC_MONTHLY",
+    )
+    paddle_price_agent_monthly: str = Field(
+        default="pri_01kys40md1hjtvpyztme23cnmx",
+        validation_alias="PADDLE_PRICE_AGENT_MONTHLY",
+    )
+    paddle_price_agency_monthly: str = Field(
+        default="pri_01kys43pt84j6b43stbp0wfd2z",
+        validation_alias="PADDLE_PRICE_AGENCY_MONTHLY",
+    )
+
     apify_api_token: str = Field(default="", validation_alias="APIFY_API_TOKEN")
     apify_actor_id: str = Field(default="compass/crawler-google-places", validation_alias="APIFY_ACTOR_ID")
     apify_web_actor_id: str = Field(default="apify/website-content-crawler", validation_alias="APIFY_WEB_ACTOR_ID")
@@ -163,6 +186,18 @@ class Settings(BaseSettings):
         if self.auth_cookie_secure is not None:
             return self.auth_cookie_secure
         return self.environment.lower() == "production"
+
+    @property
+    def paddle_is_sandbox(self) -> bool:
+        return self.paddle_environment.strip().lower() not in {"live", "production", "prod"}
+
+    @property
+    def paddle_api_key(self) -> str:
+        return self.paddle_sandbox_api_key if self.paddle_is_sandbox else self.paddle_live_api_key
+
+    @property
+    def paddle_api_base_url(self) -> str:
+        return "https://sandbox-api.paddle.com" if self.paddle_is_sandbox else "https://api.paddle.com"
 
     def oauth_redirect_uri(self, provider: str) -> str:
         if provider == "google" and self.google_oauth_redirect_uri:

@@ -221,6 +221,100 @@ class VoiceSettingsStatus(BaseModel):
     cartesia_api_key_masked: str = ""
 
 
+class BillingPlan(BaseModel):
+    key: str
+    name: str
+    description: str
+    price_id: str
+    product_id: str
+    amount: str
+    currency_code: str
+    interval: str
+    frequency: int = 1
+    features: list[str] = Field(default_factory=list)
+    highlighted: bool = False
+
+
+class BillingPlansResponse(BaseModel):
+    environment: Literal["sandbox", "production"]
+    plans: list[BillingPlan]
+
+
+class PaddleCustomerRead(BaseModel):
+    customer_id: str
+    email: str = ""
+    name: str = ""
+    status: str = ""
+
+
+class PaddleSubscriptionRead(BaseModel):
+    subscription_id: str
+    customer_id: str = ""
+    status: str = ""
+    plan_key: str = ""
+    price_id: str = ""
+    product_id: str = ""
+    quantity: int = 1
+    currency_code: str = ""
+    billing_interval: str = ""
+    billing_frequency: int = 1
+    started_at: datetime | None = None
+    first_billed_at: datetime | None = None
+    next_billed_at: datetime | None = None
+    current_period_starts_at: datetime | None = None
+    current_period_ends_at: datetime | None = None
+    paused_at: datetime | None = None
+    canceled_at: datetime | None = None
+    scheduled_change_action: str = ""
+    scheduled_change_effective_at: datetime | None = None
+    management_urls: dict[str, Any] = Field(default_factory=dict)
+
+
+class PaddleTransactionRead(BaseModel):
+    transaction_id: str
+    customer_id: str = ""
+    subscription_id: str = ""
+    status: str = ""
+    invoice_number: str = ""
+    currency_code: str = ""
+    subtotal: str = ""
+    tax: str = ""
+    total: str = ""
+    billed_at: datetime | None = None
+    invoice_url: str = ""
+
+
+class BillingOverview(BaseModel):
+    environment: Literal["sandbox", "production"]
+    customer: PaddleCustomerRead | None = None
+    subscription: PaddleSubscriptionRead | None = None
+    plans: list[BillingPlan] = Field(default_factory=list)
+
+
+class BillingHistoryResponse(BaseModel):
+    transactions: list[PaddleTransactionRead]
+
+
+class PaddlePortalSessionResponse(BaseModel):
+    url: str
+    urls: dict[str, Any] = Field(default_factory=dict)
+
+
+class PaddleChangePlanRequest(BaseModel):
+    price_id: str = Field(min_length=8, max_length=120)
+    proration_billing_mode: Literal[
+        "prorated_immediately",
+        "prorated_next_billing_period",
+        "full_immediately",
+        "full_next_billing_period",
+        "do_not_bill",
+    ] = "prorated_immediately"
+
+
+class PaddleCancelSubscriptionRequest(BaseModel):
+    effective_from: Literal["next_billing_period", "immediately"] = "next_billing_period"
+
+
 class AnalyticsResponse(BaseModel):
     leads_found: int
     leads_saved: int

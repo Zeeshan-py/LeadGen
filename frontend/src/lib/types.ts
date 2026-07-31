@@ -170,6 +170,80 @@ export type VoiceSettingsStatus = {
   cartesia_api_key_masked: string;
 };
 
+export type BillingPlan = {
+  key: string;
+  name: string;
+  description: string;
+  price_id: string;
+  product_id: string;
+  amount: string;
+  currency_code: string;
+  interval: string;
+  frequency: number;
+  features: string[];
+  highlighted: boolean;
+};
+
+export type BillingPlansResponse = {
+  environment: "sandbox" | "production";
+  plans: BillingPlan[];
+};
+
+export type PaddleCustomer = {
+  customer_id: string;
+  email: string;
+  name: string;
+  status: string;
+};
+
+export type PaddleSubscription = {
+  subscription_id: string;
+  customer_id: string;
+  status: string;
+  plan_key: string;
+  price_id: string;
+  product_id: string;
+  quantity: number;
+  currency_code: string;
+  billing_interval: string;
+  billing_frequency: number;
+  started_at: string | null;
+  first_billed_at: string | null;
+  next_billed_at: string | null;
+  current_period_starts_at: string | null;
+  current_period_ends_at: string | null;
+  paused_at: string | null;
+  canceled_at: string | null;
+  scheduled_change_action: string;
+  scheduled_change_effective_at: string | null;
+  management_urls: Record<string, unknown>;
+};
+
+export type PaddleTransaction = {
+  transaction_id: string;
+  customer_id: string;
+  subscription_id: string;
+  status: string;
+  invoice_number: string;
+  currency_code: string;
+  subtotal: string;
+  tax: string;
+  total: string;
+  billed_at: string | null;
+  invoice_url: string;
+};
+
+export type BillingOverview = {
+  environment: "sandbox" | "production";
+  customer: PaddleCustomer | null;
+  subscription: PaddleSubscription | null;
+  plans: BillingPlan[];
+};
+
+export type BillingHistory = {
+  transactions: PaddleTransaction[];
+};
+
 export const crmStages = [
   "new",
   "qualified",

@@ -63,6 +63,18 @@ class User(Base, TimestampMixin):
         cascade="all, delete-orphan",
         uselist=False,
     )
+    paddle_customers: Mapped[list["PaddleCustomer"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    paddle_subscriptions: Mapped[list["PaddleSubscription"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    paddle_transactions: Mapped[list["PaddleTransaction"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
     password_reset_tokens: Mapped[list["PasswordResetToken"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
@@ -134,6 +146,102 @@ class VoiceSettings(Base, TimestampMixin):
     cartesia_api_key_encrypted: Mapped[str] = mapped_column(Text, default="")
 
     user: Mapped[User] = relationship(back_populates="voice_settings")
+
+
+class PaddleCustomer(Base, TimestampMixin):
+    __tablename__ = "paddle_customers"
+    __table_args__ = (
+        UniqueConstraint("customer_id", name="uq_paddle_customers_customer_id"),
+        UniqueConstraint("user_id", name="uq_paddle_customers_user_id"),
+    )
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    customer_id: Mapped[str] = mapped_column(String(80), index=True)
+    email: Mapped[str] = mapped_column(String(320), default="", index=True)
+    name: Mapped[str] = mapped_column(String(160), default="")
+    status: Mapped[str] = mapped_column(String(40), default="")
+    raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    user: Mapped[User | None] = relationship(back_populates="paddle_customers")
+
+
+class PaddleSubscription(Base, TimestampMixin):
+    __tablename__ = "paddle_subscriptions"
+    __table_args__ = (UniqueConstraint("subscription_id", name="uq_paddle_subscriptions_subscription_id"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    subscription_id: Mapped[str] = mapped_column(String(80), index=True)
+    customer_id: Mapped[str] = mapped_column(String(80), default="", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="", index=True)
+    plan_key: Mapped[str] = mapped_column(String(60), default="", index=True)
+    price_id: Mapped[str] = mapped_column(String(80), default="", index=True)
+    product_id: Mapped[str] = mapped_column(String(80), default="", index=True)
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    currency_code: Mapped[str] = mapped_column(String(10), default="")
+    billing_interval: Mapped[str] = mapped_column(String(20), default="")
+    billing_frequency: Mapped[int] = mapped_column(Integer, default=1)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    first_billed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_billed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_period_starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_period_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    canceled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    scheduled_change_action: Mapped[str] = mapped_column(String(40), default="")
+    scheduled_change_effective_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    management_urls: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    items: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    custom_data: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    user: Mapped[User | None] = relationship(back_populates="paddle_subscriptions")
+
+
+class PaddleTransaction(Base, TimestampMixin):
+    __tablename__ = "paddle_transactions"
+    __table_args__ = (UniqueConstraint("transaction_id", name="uq_paddle_transactions_transaction_id"),)
+
+    id: Mapped[str] = mapped_column(Uuid(as_uuid=False), primary_key=True, default=new_id)
+    user_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    transaction_id: Mapped[str] = mapped_column(String(80), index=True)
+    customer_id: Mapped[str] = mapped_column(String(80), default="", index=True)
+    subscription_id: Mapped[str] = mapped_column(String(80), default="", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="", index=True)
+    invoice_number: Mapped[str] = mapped_column(String(80), default="", index=True)
+    currency_code: Mapped[str] = mapped_column(String(10), default="")
+    subtotal: Mapped[str] = mapped_column(String(40), default="")
+    tax: Mapped[str] = mapped_column(String(40), default="")
+    total: Mapped[str] = mapped_column(String(40), default="")
+    billed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
+    invoice_url: Mapped[str] = mapped_column(String(1000), default="")
+    raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+    user: Mapped[User | None] = relationship(back_populates="paddle_transactions")
+
+
+class PaddleWebhookEvent(Base):
+    __tablename__ = "paddle_webhook_events"
+
+    id: Mapped[str] = mapped_column(String(120), primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(120), index=True)
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    raw: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
 class RefreshToken(Base):

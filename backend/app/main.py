@@ -40,6 +40,7 @@ from .gmail_connections import GmailConnectionRequiredError, get_connected_gmail
 from .gmail_routes import router as gmail_router
 from .google_sheets import validate_google_sheets
 from .models import Analytics, Campaign, EmailMessage, Lead, LeadGenerationJob, Outreach, Setting, User
+from .paddle_routes import router as paddle_router
 from .runner import create_generation_job, get_job, get_job_snapshot, get_latest_job_snapshot, run_generation_job
 from .schemas import (
     AnalyticsResponse,
@@ -71,6 +72,7 @@ app = FastAPI(title="LeadForge AI API", version="1.0.0")
 app.include_router(auth_router)
 app.include_router(gmail_router)
 app.include_router(twilio_router)
+app.include_router(paddle_router)
 app.include_router(crm_router)
 app.include_router(ai_sdr_router)
 
@@ -96,6 +98,7 @@ PROTECTED_API_PREFIXES = (
     "/settings",
     "/gmail",
     "/twilio",
+    "/billing",
     "/health/google",
     "/crm",
     "/ai-sdr",
@@ -105,6 +108,8 @@ PUBLIC_API_PREFIXES = (
     "/email/open",
     "/static/screenshots",
     "/ai-sdr/calls/twilio",
+    "/billing/plans",
+    "/billing/webhook",
 )
 PUBLIC_API_EXACT_PATHS = {"/health", "/health/live", "/health/ready"}
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -167,12 +172,12 @@ def _content_security_policy() -> str:
         "object-src 'none'",
         "frame-ancestors 'none'",
         "form-action 'self'",
-        "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com",
+        "script-src 'self' 'unsafe-inline' https://cdn.paddle.com https://*.paddle.com https://www.googletagmanager.com https://www.google-analytics.com https://ssl.google-analytics.com",
         "style-src 'self' 'unsafe-inline'",
-        "img-src 'self' data: blob: https://www.googletagmanager.com https://www.google-analytics.com https://*.googleusercontent.com https://avatars.githubusercontent.com",
+        "img-src 'self' data: blob: https://*.paddle.com https://www.googletagmanager.com https://www.google-analytics.com https://*.googleusercontent.com https://avatars.githubusercontent.com",
         "font-src 'self' data:",
-        "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://region1.google-analytics.com",
-        "frame-src https://www.googletagmanager.com",
+        "connect-src 'self' https://*.paddle.com https://sandbox-api.paddle.com https://api.paddle.com https://www.googletagmanager.com https://www.google-analytics.com https://analytics.google.com https://stats.g.doubleclick.net https://region1.google-analytics.com",
+        "frame-src https://*.paddle.com https://www.googletagmanager.com",
         "worker-src 'self' blob:",
         "manifest-src 'self'",
         "upgrade-insecure-requests",

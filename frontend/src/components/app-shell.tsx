@@ -14,6 +14,7 @@ import {
   Bot,
   BrainCircuit,
   ContactRound,
+  CreditCard,
   Gauge,
   Home,
   Layers3,
@@ -54,6 +55,7 @@ const nav = [
   { href: "/campaigns", label: "Campaigns", icon: Layers3 },
   { href: "/outreach", label: "Outreach", icon: Mail },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
