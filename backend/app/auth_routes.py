@@ -39,6 +39,7 @@ from .auth import (
 )
 from .config import Settings, get_settings
 from .database import get_db
+from .disposable_email import DisposableEmailRejected, ensure_signup_email_allowed
 from .models import PasswordResetToken, User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -135,6 +136,10 @@ def signup(
     _rate_limit(_rate_key(request, "signup", payload.email), limit=10, window_seconds=60 * 60)
     if is_admin_email(payload.email, settings):
         raise HTTPException(status_code=400, detail="Use the configured admin login for this email address")
+    try:
+        ensure_signup_email_allowed(payload.email, settings)
+    except DisposableEmailRejected as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     existing = db.scalar(select(User).where(User.email == payload.email).limit(1))
     if existing:
         raise HTTPException(status_code=409, detail="An account with this email already exists")

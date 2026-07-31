@@ -57,6 +57,28 @@ class Settings(BaseSettings):
     github_oauth_client_id: str = Field(default="", validation_alias="GITHUB_OAUTH_CLIENT_ID")
     github_oauth_client_secret: str = Field(default="", validation_alias="GITHUB_OAUTH_CLIENT_SECRET")
     github_oauth_redirect_uri: str = Field(default="", validation_alias="GITHUB_OAUTH_REDIRECT_URI")
+    disposable_email_blocklist_url: str = Field(
+        default=(
+            "https://raw.githubusercontent.com/disposable-email-domains/"
+            "disposable-email-domains/master/disposable_email_blocklist.conf"
+        ),
+        validation_alias="DISPOSABLE_EMAIL_BLOCKLIST_URL",
+    )
+    disposable_email_cache_path: Path = Field(
+        default=Path("./storage/disposable_email_domains.txt"),
+        validation_alias="DISPOSABLE_EMAIL_CACHE_PATH",
+    )
+    disposable_email_fetch_timeout_seconds: float = Field(
+        default=10,
+        validation_alias="DISPOSABLE_EMAIL_FETCH_TIMEOUT_SECONDS",
+    )
+    abstract_email_api_key: str = Field(default="", validation_alias="ABSTRACT_EMAIL_API_KEY")
+    abstract_email_reputation_url: str = Field(
+        default="https://emailreputation.abstractapi.com/v1",
+        validation_alias="ABSTRACT_EMAIL_REPUTATION_URL",
+    )
+    abstract_email_timeout_seconds: float = Field(default=6, validation_alias="ABSTRACT_EMAIL_TIMEOUT_SECONDS")
+    abstract_email_cache_hours: int = Field(default=24, validation_alias="ABSTRACT_EMAIL_CACHE_HOURS")
     database_pool_size: int = Field(default=5, validation_alias="DATABASE_POOL_SIZE")
     database_max_overflow: int = Field(default=10, validation_alias="DATABASE_MAX_OVERFLOW")
     frontend_static_dir: Path = Field(default=Path("./frontend"), validation_alias="FRONTEND_STATIC_DIR")

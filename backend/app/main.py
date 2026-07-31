@@ -34,6 +34,7 @@ from .auth_routes import router as auth_router
 from .config import get_settings
 from .crm import router as crm_router
 from .database import SessionLocal, check_db, get_db
+from .disposable_email import load_disposable_email_domains
 from .email_sync import sync_replied_outreach
 from .gmail import GmailConfigurationError, GmailSendError
 from .gmail_connections import GmailConnectionRequiredError, get_connected_gmail_connection, gmail_client_for_user
@@ -236,6 +237,7 @@ async def csrf_protect(request: Request, call_next):
 async def on_startup() -> None:
     settings.validate_production()
     get_ai_sdr_settings().validate_calling_startup()
+    await asyncio.to_thread(load_disposable_email_domains, settings)
     try:
         validate_google_sheets(settings)
     except Exception:
