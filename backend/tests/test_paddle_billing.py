@@ -15,6 +15,7 @@ from app.config import Settings
 from app.database import Base
 from app.models import PaddleSubscription, User
 from app.paddle_billing import create_checkout_payload, process_paddle_webhook, verify_paddle_signature
+from app.paddle_routes import paddle_webhook_status
 
 
 class PaddleBillingTests(unittest.TestCase):
@@ -122,6 +123,13 @@ class PaddleBillingTests(unittest.TestCase):
         self.assertEqual(payload.custom_data["leadforge_user_id"], user_id)
         self.assertEqual(payload.custom_data["email"], "buyer@example.test")
         self.assertEqual(payload.custom_data["current_plan"], "basic")
+
+    def test_webhook_get_reports_endpoint_status(self) -> None:
+        payload = paddle_webhook_status()
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["method"], "POST")
+        self.assertIn("signed POST", payload["message"])
 
 
 if __name__ == "__main__":

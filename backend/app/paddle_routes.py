@@ -185,6 +185,15 @@ async def cancel_my_subscription(
     return subscription_read(synced)
 
 
+@router.get("/webhook", include_in_schema=False)
+def paddle_webhook_status() -> dict[str, str]:
+    return {
+        "status": "ok",
+        "message": "Paddle webhook endpoint is active. Configure Paddle to send signed POST requests here.",
+        "method": "POST",
+    }
+
+
 @router.post("/webhook")
 async def paddle_webhook(
     request: Request,
