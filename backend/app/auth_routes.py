@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import re
 import secrets
-import threading
 import logging
 from datetime import timedelta
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
@@ -41,6 +40,7 @@ from .config import Settings, get_settings
 from .database import get_db
 from .disposable_email import DisposableEmailRejected, ensure_signup_email_allowed
 from .models import PasswordResetToken, User
+from .rate_limit import enforce_rate_limit, rate_limit_key
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -49,9 +49,6 @@ PASSWORD_MIN_LENGTH = 8
 MAX_USER_AVATAR_URL_LENGTH = 800
 
 logger = logging.getLogger("leadforge.auth")
-
-_rate_lock = threading.Lock()
-_rate_events: dict[str, list[float]] = {}
 
 
 class UserRead(BaseModel):
@@ -133,7 +130,7 @@ def signup(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> AuthResponse:
-    _rate_limit(_rate_key(request, "signup", payload.email), limit=10, window_seconds=60 * 60)
+    enforce_rate_limit(rate_limit_key(request, "signup", payload.email), limit=10, window_seconds=60 * 60)
     if is_admin_email(payload.email, settings):
         raise HTTPException(status_code=400, detail="Use the configured admin login for this email address")
     try:
@@ -165,7 +162,7 @@ def login(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> AuthResponse:
-    _rate_limit(_rate_key(request, "login", payload.email), limit=8, window_seconds=15 * 60)
+    enforce_rate_limit(rate_limit_key(request, "login", payload.email), limit=8, window_seconds=15 * 60)
     user = db.scalar(select(User).where(User.email == payload.email).limit(1))
 
     if is_admin_email(payload.email, settings):
@@ -193,6 +190,7 @@ def refresh_session(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> AuthResponse:
+    enforce_rate_limit(rate_limit_key(request, "refresh"), limit=60, window_seconds=15 * 60)
     raw_refresh = request.cookies.get("leadforge_refresh", "")
     token = find_active_refresh_token(db, raw_refresh)
     if not token:
@@ -234,7 +232,7 @@ def forgot_password(
     settings: Settings = Depends(get_settings),
 ) -> ForgotPasswordResponse:
     email = normalize_email(payload.email)
-    _rate_limit(_rate_key(request, "forgot", email), limit=5, window_seconds=15 * 60)
+    enforce_rate_limit(rate_limit_key(request, "forgot", email), limit=5, window_seconds=15 * 60)
     user = db.scalar(select(User).where(User.email == email).limit(1))
     reset_token_value: str | None = None
     if user:
@@ -259,8 +257,10 @@ def forgot_password(
 @router.post("/reset-password")
 def reset_password(
     payload: ResetPasswordRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ) -> dict[str, str]:
+    enforce_rate_limit(rate_limit_key(request, "reset-password", payload.token[:16]), limit=8, window_seconds=15 * 60)
     token = db.scalar(
         select(PasswordResetToken)
         .where(PasswordResetToken.token_hash == hash_token(payload.token))
@@ -286,6 +286,7 @@ def google_login(
     next: str = Query(default="/dashboard"),
     settings: Settings = Depends(get_settings),
 ) -> RedirectResponse:
+    enforce_rate_limit(rate_limit_key(request, "google-oauth-start"), limit=30, window_seconds=5 * 60)
     if not settings.google_oauth_client_id or not settings.google_oauth_client_secret:
         raise HTTPException(status_code=503, detail="Google OAuth is not configured")
     state = secrets.token_urlsafe(32)
@@ -311,6 +312,7 @@ def google_callback(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RedirectResponse:
+    enforce_rate_limit(rate_limit_key(request, "google-oauth-callback"), limit=60, window_seconds=15 * 60)
     if not settings.google_oauth_client_id or not settings.google_oauth_client_secret:
         logger.error("Google OAuth callback received while Google OAuth is not configured")
         raise HTTPException(status_code=503, detail="Google OAuth is not configured")
@@ -358,6 +360,9 @@ def google_callback(
         raise HTTPException(status_code=502, detail="Google authentication failed") from exc
 
     try:
+        if not bool(profile.get("email_verified")):
+            logger.warning("Google OAuth profile returned an unverified email address")
+            raise HTTPException(status_code=400, detail="Google account email must be verified")
         user = _upsert_oauth_user(
             db,
             provider="google",
@@ -381,6 +386,7 @@ def github_login(
     next: str = Query(default="/dashboard"),
     settings: Settings = Depends(get_settings),
 ) -> RedirectResponse:
+    enforce_rate_limit(rate_limit_key(request, "github-oauth-start"), limit=30, window_seconds=5 * 60)
     if not settings.github_oauth_client_id or not settings.github_oauth_client_secret:
         raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
     state = secrets.token_urlsafe(32)
@@ -404,38 +410,67 @@ def github_callback(
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RedirectResponse:
+    enforce_rate_limit(rate_limit_key(request, "github-oauth-callback"), limit=60, window_seconds=15 * 60)
+    if not settings.github_oauth_client_id or not settings.github_oauth_client_secret:
+        logger.error("GitHub OAuth callback received while GitHub OAuth is not configured")
+        raise HTTPException(status_code=503, detail="GitHub OAuth is not configured")
+    if not code:
+        logger.warning("GitHub OAuth callback missing authorization code")
+        raise HTTPException(status_code=400, detail="GitHub authentication was cancelled or failed")
+
     _validate_oauth_state(request, state)
-    with httpx.Client(timeout=15, headers={"Accept": "application/json"}) as client:
-        token_response = client.post(
-            "https://github.com/login/oauth/access_token",
-            data={
-                "code": code,
-                "client_id": settings.github_oauth_client_id,
-                "client_secret": settings.github_oauth_client_secret,
-                "redirect_uri": settings.oauth_redirect_uri("github"),
-            },
+    try:
+        with httpx.Client(timeout=15, headers={"Accept": "application/json"}) as client:
+            token_response = client.post(
+                "https://github.com/login/oauth/access_token",
+                data={
+                    "code": code,
+                    "client_id": settings.github_oauth_client_id,
+                    "client_secret": settings.github_oauth_client_secret,
+                    "redirect_uri": settings.oauth_redirect_uri("github"),
+                },
+            )
+            token_response.raise_for_status()
+            access_token = token_response.json().get("access_token")
+            if not access_token:
+                logger.error("GitHub OAuth token response did not include an access token")
+                raise HTTPException(status_code=502, detail="GitHub authentication failed")
+            headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"}
+            profile_response = client.get("https://api.github.com/user", headers=headers)
+            profile_response.raise_for_status()
+            profile = profile_response.json()
+            emails_response = client.get("https://api.github.com/user/emails", headers=headers)
+            emails_response.raise_for_status()
+            emails = emails_response.json()
+    except httpx.HTTPStatusError as exc:
+        logger.warning(
+            "GitHub OAuth provider request failed: status=%s endpoint=%s response=%s",
+            exc.response.status_code,
+            exc.request.url,
+            exc.response.text[:500],
         )
-        token_response.raise_for_status()
-        access_token = token_response.json().get("access_token")
-        headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"}
-        profile_response = client.get("https://api.github.com/user", headers=headers)
-        profile_response.raise_for_status()
-        profile = profile_response.json()
-        emails_response = client.get("https://api.github.com/user/emails", headers=headers)
-        emails_response.raise_for_status()
-        emails = emails_response.json()
-    email = _github_primary_email(emails) or str(profile.get("email") or "")
-    user = _upsert_oauth_user(
-        db,
-        provider="github",
-        provider_id=str(profile.get("id") or ""),
-        email=email,
-        full_name=str(profile.get("name") or profile.get("login") or ""),
-        avatar_url=str(profile.get("avatar_url") or ""),
-        is_verified=bool(email),
-        settings=settings,
-    )
-    return _oauth_session_redirect(db, user, request, settings)
+        raise HTTPException(status_code=502, detail="GitHub authentication failed") from exc
+    except httpx.RequestError as exc:
+        logger.warning("GitHub OAuth provider request error: endpoint=%s error=%s", exc.request.url, exc)
+        raise HTTPException(status_code=502, detail="GitHub authentication failed") from exc
+
+    try:
+        email = _github_primary_email(emails)
+        user = _upsert_oauth_user(
+            db,
+            provider="github",
+            provider_id=str(profile.get("id") or ""),
+            email=email,
+            full_name=str(profile.get("name") or profile.get("login") or ""),
+            avatar_url=str(profile.get("avatar_url") or ""),
+            is_verified=bool(email),
+            settings=settings,
+        )
+        return _oauth_session_redirect(db, user, request, settings)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.exception("GitHub OAuth user persistence failed")
+        raise HTTPException(status_code=500, detail="Could not complete GitHub login") from exc
 
 
 def _issue_session(
@@ -490,12 +525,17 @@ def _upsert_oauth_user(
     is_verified: bool,
     settings: Settings,
 ) -> User:
+    clean_provider_id = provider_id.strip()
+    if not clean_provider_id:
+        raise HTTPException(status_code=400, detail=f"{provider.title()} did not return a usable account id")
     clean_email = normalize_email(email)
     if not clean_email or not EMAIL_RE.match(clean_email):
         raise HTTPException(status_code=400, detail=f"{provider.title()} did not return a usable email address")
+    if not is_verified:
+        raise HTTPException(status_code=400, detail=f"{provider.title()} account email must be verified")
     user = db.scalar(
         select(User)
-        .where(User.provider == provider, User.provider_id == provider_id)
+        .where(User.provider == provider, User.provider_id == clean_provider_id)
         .limit(1)
     )
     user = user or db.scalar(select(User).where(User.email == clean_email).limit(1))
@@ -503,7 +543,7 @@ def _upsert_oauth_user(
         user = User(email=clean_email)
     user.full_name = full_name.strip() or user.full_name or clean_email.split("@", 1)[0]
     user.provider = provider
-    user.provider_id = provider_id
+    user.provider_id = clean_provider_id
     user.avatar_url = _safe_avatar_url(avatar_url)
     user.is_verified = is_verified
     apply_admin_flag(user, settings)
@@ -521,8 +561,8 @@ def _oauth_session_redirect(
     next_path = _safe_next(request.cookies.get(OAUTH_NEXT_COOKIE, "/dashboard"))
     response = RedirectResponse(f"{settings.frontend_origin.rstrip('/')}{next_path}")
     _issue_session(db, user, request, response, remember_me=True, settings=settings)
-    response.delete_cookie(OAUTH_STATE_COOKIE, path="/")
-    response.delete_cookie(OAUTH_NEXT_COOKIE, path="/")
+    response.delete_cookie(OAUTH_STATE_COOKIE, path="/", domain=settings.auth_cookie_domain or None)
+    response.delete_cookie(OAUTH_NEXT_COOKIE, path="/", domain=settings.auth_cookie_domain or None)
     return response
 
 
@@ -559,20 +599,31 @@ def _validate_oauth_state(request: Request, state: str) -> None:
 
 def _safe_next(value: str) -> str:
     candidate = value.strip() or "/dashboard"
-    if not candidate.startswith("/") or candidate.startswith("//") or "://" in candidate:
+    if (
+        not candidate.startswith("/")
+        or candidate.startswith("//")
+        or "://" in candidate
+        or "\\" in candidate
+        or any(ord(char) < 32 for char in candidate)
+    ):
         return "/dashboard"
     return candidate
 
 
 def _safe_avatar_url(value: str) -> str:
     avatar_url = value.strip()
-    if len(avatar_url) <= MAX_USER_AVATAR_URL_LENGTH:
+    try:
+        parsed = urlsplit(avatar_url)
+    except ValueError:
+        return ""
+    if parsed.scheme in {"http", "https"} and parsed.netloc and len(avatar_url) <= MAX_USER_AVATAR_URL_LENGTH:
         return avatar_url
-    logger.info(
-        "OAuth avatar URL exceeded storage limit and was omitted: length=%s max=%s",
-        len(avatar_url),
-        MAX_USER_AVATAR_URL_LENGTH,
-    )
+    if len(avatar_url) > MAX_USER_AVATAR_URL_LENGTH:
+        logger.info(
+            "OAuth avatar URL exceeded storage limit and was omitted: length=%s max=%s",
+            len(avatar_url),
+            MAX_USER_AVATAR_URL_LENGTH,
+        )
     return ""
 
 
@@ -587,22 +638,3 @@ def _github_primary_email(rows: Any) -> str:
     primary = next((row for row in verified if row.get("primary")), None)
     selected = primary or (verified[0] if verified else None)
     return normalize_email(str(selected.get("email") or "")) if selected else ""
-
-
-def _rate_key(request: Request, action: str, email: str) -> str:
-    ip = request.client.host if request.client else "unknown"
-    return f"{action}:{ip}:{normalize_email(email)}"
-
-
-def _rate_limit(key: str, *, limit: int, window_seconds: int) -> None:
-    now = utc_now().timestamp()
-    floor = now - window_seconds
-    with _rate_lock:
-        events = [stamp for stamp in _rate_events.get(key, []) if stamp >= floor]
-        if len(events) >= limit:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Too many attempts. Please wait and try again.",
-            )
-        events.append(now)
-        _rate_events[key] = events

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 import ssl
 import logging
+import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any
@@ -18,6 +19,7 @@ from .social_links import (
 )
 from .source_maps import add_source, merge_social_source_map, merge_source_map
 from .validation import normalize_email, normalize_phone, normalize_website
+from .url_safety import is_safe_public_url
 
 try:
     from bs4 import BeautifulSoup
@@ -198,12 +200,19 @@ class WebsiteScraper:
         }
 
     def _fetch(self, url: str) -> str | None:
+        if not is_safe_public_url(url, resolve=True):
+            logger.warning("Blocked unsafe website fetch target: %s", url)
+            return None
         try:
             req = urllib.request.Request(
                 url,
                 headers={"User-Agent": "Mozilla/5.0 (compatible; LeadBot/1.0)"},
             )
-            with urllib.request.urlopen(req, timeout=self.timeout, context=self._ssl_ctx) as resp:
+            opener = urllib.request.build_opener(
+                _SafeRedirectHandler(),
+                urllib.request.HTTPSHandler(context=self._ssl_ctx),
+            )
+            with opener.open(req, timeout=self.timeout) as resp:
                 raw = resp.read(500_000)
                 charset = resp.headers.get_content_charset() or "utf-8"
                 return raw.decode(charset, errors="replace")
@@ -358,3 +367,16 @@ def _decode_cf_email(encoded: str) -> str:
         return "".join(chr(int(encoded[i:i+2], 16) ^ key) for i in range(2, len(encoded), 2))
     except Exception:
         return ""
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not is_safe_public_url(newurl, resolve=True):
+            raise urllib.error.HTTPError(
+                newurl,
+                code,
+                "Unsafe redirect target blocked",
+                headers,
+                fp,
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)

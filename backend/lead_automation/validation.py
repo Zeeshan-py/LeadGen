@@ -6,6 +6,8 @@ import re
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit, urlunsplit
 
+from .url_safety import is_safe_public_url
+
 if TYPE_CHECKING:
     from .models import PlaceLead
 
@@ -36,7 +38,10 @@ def normalize_website(value: str) -> str:
         return ""
     if host in {"localhost", "example.com"}:
         return ""
-    return urlunsplit((parsed.scheme, host, parsed.path or "/", parsed.query, ""))
+    normalized = urlunsplit((parsed.scheme, host, parsed.path or "/", parsed.query, ""))
+    if not is_safe_public_url(normalized, resolve=False):
+        return ""
+    return normalized
 
 
 def normalize_email(value: str) -> str:

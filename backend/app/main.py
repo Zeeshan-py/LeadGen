@@ -18,6 +18,7 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from io import StringIO
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +43,7 @@ from .gmail_routes import router as gmail_router
 from .google_sheets import validate_google_sheets
 from .models import Analytics, Campaign, EmailMessage, Lead, LeadGenerationJob, Outreach, Setting, User
 from .paddle_routes import router as paddle_router
+from .rate_limit import enforce_rate_limit, rate_limit_key
 from .runner import create_generation_job, get_job, get_job_snapshot, get_latest_job_snapshot, run_generation_job
 from .schemas import (
     AnalyticsResponse,
@@ -57,7 +59,7 @@ from .schemas import (
 )
 from .services.lead_analysis import LeadAnalysisService
 from .services.crm import change_crm_stage, mark_contacted, record_crm_activity
-from .settings_store import effective_settings
+from .settings_store import effective_settings, serialized_setting_value
 from .subscription_access import (
     assert_generate_leads_allowed,
     assert_lead_filters_allowed,
@@ -75,25 +77,6 @@ if not logging.getLogger().handlers:
     )
 logging.getLogger("app").setLevel(logging.INFO)
 logging.getLogger("lead_automation").setLevel(logging.INFO)
-app = FastAPI(title="LeadForge AI API", version="1.0.0")
-app.include_router(auth_router)
-app.include_router(gmail_router)
-app.include_router(twilio_router)
-app.include_router(paddle_router)
-app.include_router(crm_router)
-app.include_router(ai_sdr_router)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[settings.frontend_origin, "http://localhost:3000", "http://127.0.0.1:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-settings.screenshots_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/static/screenshots", StaticFiles(directory=settings.screenshots_dir), name="screenshots")
-
 
 PROTECTED_API_PREFIXES = (
     "/generate-leads",
@@ -126,6 +109,7 @@ BACKEND_DOCUMENT_PREFIXES = (
     "/static/screenshots",
     "/gmail/connect",
     "/gmail/callback",
+    "/billing/webhook",
     "/ai-sdr/calls/twilio",
 )
 SEO_FILE_PATHS = {
@@ -140,6 +124,68 @@ SEO_FILE_PATHS = {
     "/brand/leadforge-og.svg",
     "/brand/mask-icon.svg",
 }
+
+LEAD_SORT_COLUMNS = {
+    "business_name": Lead.business_name,
+    "website": Lead.website,
+    "email": Lead.email,
+    "phone": Lead.phone,
+    "city": Lead.city,
+    "country": Lead.country,
+    "business_type": Lead.business_type,
+    "lead_status": Lead.lead_status,
+    "outreach_status": Lead.outreach_status,
+    "website_score": Lead.website_score,
+    "opportunity_score": Lead.opportunity_score,
+    "created_at": Lead.created_at,
+    "updated_at": Lead.updated_at,
+}
+
+
+def _cors_allowed_origins() -> list[str]:
+    configured = [
+        settings.frontend_origin,
+        settings.public_backend_url,
+    ]
+    if settings.environment.lower() != "production":
+        configured.extend(["http://localhost:3000", "http://127.0.0.1:3000"])
+
+    origins: list[str] = []
+    for value in configured:
+        origin = _origin_from_url(value)
+        if origin and origin not in origins:
+            origins.append(origin)
+    return origins
+
+
+def _origin_from_url(value: str) -> str:
+    try:
+        parsed = urlsplit(value.strip())
+    except ValueError:
+        return ""
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    return f"{parsed.scheme}://{parsed.netloc}".rstrip("/")
+
+
+app = FastAPI(title="LeadForge AI API", version="1.0.0")
+app.include_router(auth_router)
+app.include_router(gmail_router)
+app.include_router(twilio_router)
+app.include_router(paddle_router)
+app.include_router(crm_router)
+app.include_router(ai_sdr_router)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_allowed_origins(),
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+settings.screenshots_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/static/screenshots", StaticFiles(directory=settings.screenshots_dir), name="screenshots")
 
 
 @app.middleware("http")
@@ -210,9 +256,14 @@ async def protect_api_routes(request: Request, call_next):
         return await call_next(request)
     with SessionLocal() as db:
         try:
-            authenticate_request(request, db, settings)
+            user = authenticate_request(request, db, settings)
+            _enforce_api_rate_limit(request, path, user.id)
         except HTTPException as exc:
-            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={"detail": exc.detail},
+                headers=getattr(exc, "headers", None) or {},
+            )
     return await call_next(request)
 
 
@@ -410,7 +461,7 @@ def get_leads(
         query = query.where(Lead.social_status == "found")
 
     column_name = sort.removeprefix("-")
-    column = getattr(Lead, column_name, Lead.created_at)
+    column = LEAD_SORT_COLUMNS.get(column_name, Lead.created_at)
     query = query.order_by(desc(column) if sort.startswith("-") else asc(column))
     return list(db.scalars(query.offset(offset).limit(limit)).all())
 
@@ -868,10 +919,24 @@ def update_settings(
     }
     for key, value in secret_map.items():
         if value is not None:
-            db.merge(Setting(user_id=current_user.id, key=key, value={"value": value}, is_secret=True))
+            db.merge(
+                Setting(
+                    user_id=current_user.id,
+                    key=key,
+                    value=serialized_setting_value(value, is_secret=True, settings=settings),
+                    is_secret=True,
+                )
+            )
     for key, value in regular_map.items():
         if value is not None:
-            db.merge(Setting(user_id=current_user.id, key=key, value={"value": value}, is_secret=False))
+            db.merge(
+                Setting(
+                    user_id=current_user.id,
+                    key=key,
+                    value=serialized_setting_value(value, is_secret=False, settings=settings),
+                    is_secret=False,
+                )
+            )
     db.commit()
     return {"status": "saved"}
 
@@ -944,6 +1009,39 @@ def _is_frontend_static_asset_path(path: str) -> bool:
 
 def _is_versioned_static_asset_path(path: str) -> bool:
     return path.startswith("/brand/") or path.endswith((".css", ".js", ".woff2", ".png", ".svg", ".ico"))
+
+
+def _enforce_api_rate_limit(request: Request, path: str, user_id: str) -> None:
+    if path.startswith("/generate-leads") and request.method == "POST":
+        enforce_rate_limit(
+            rate_limit_key(request, "api-generate-leads", user_id),
+            limit=12,
+            window_seconds=60 * 60,
+            message="Too many lead generation requests. Please wait and try again.",
+        )
+        return
+    if path.startswith("/billing"):
+        enforce_rate_limit(
+            rate_limit_key(request, "api-billing", user_id),
+            limit=60,
+            window_seconds=60,
+            message="Too many billing requests. Please wait and try again.",
+        )
+        return
+    if request.method in UNSAFE_METHODS:
+        enforce_rate_limit(
+            rate_limit_key(request, "api-write", user_id),
+            limit=120,
+            window_seconds=60,
+            message="Too many API requests. Please wait and try again.",
+        )
+    else:
+        enforce_rate_limit(
+            rate_limit_key(request, "api-read", user_id),
+            limit=300,
+            window_seconds=60,
+            message="Too many API requests. Please wait and try again.",
+        )
 
 
 def _frontend_page_response(page: str) -> FileResponse | None:

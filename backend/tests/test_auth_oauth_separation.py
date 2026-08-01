@@ -5,10 +5,11 @@ from __future__ import annotations
 import unittest
 from urllib.parse import parse_qs, urlparse
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
-from app.auth_routes import _upsert_oauth_user, google_login
+from app.auth_routes import _safe_next, _upsert_oauth_user, google_login
 from app.config import Settings
 from app.database import Base
 from app.main import _is_backend_document_path
@@ -63,9 +64,16 @@ class GoogleOAuthSeparationTests(unittest.TestCase):
         self.assertTrue(_is_backend_document_path("/auth/github/login"))
         self.assertTrue(_is_backend_document_path("/gmail/connect"))
         self.assertTrue(_is_backend_document_path("/gmail/callback"))
+        self.assertTrue(_is_backend_document_path("/billing/webhook"))
         self.assertTrue(_is_backend_document_path("/ai-sdr/calls/twilio/voice"))
         self.assertFalse(_is_backend_document_path("/settings"))
         self.assertFalse(_is_backend_document_path("/ai-sdr"))
+
+    def test_oauth_next_path_rejects_open_redirects(self) -> None:
+        self.assertEqual(_safe_next("https://evil.example"), "/dashboard")
+        self.assertEqual(_safe_next("//evil.example/path"), "/dashboard")
+        self.assertEqual(_safe_next("/\\evil"), "/dashboard")
+        self.assertEqual(_safe_next("/dashboard?tab=billing"), "/dashboard?tab=billing")
 
     def test_oauth_upsert_omits_avatar_urls_that_exceed_storage_limit(self) -> None:
         engine = create_engine("sqlite+pysqlite:///:memory:")
@@ -90,6 +98,26 @@ class GoogleOAuthSeparationTests(unittest.TestCase):
         self.assertEqual(saved.avatar_url, "")
         self.assertEqual(saved.email, "oauth-user@example.test")
         self.assertEqual(saved.provider, "google")
+
+    def test_oauth_upsert_rejects_unverified_email_claims(self) -> None:
+        engine = create_engine("sqlite+pysqlite:///:memory:")
+        Base.metadata.create_all(engine)
+
+        with Session(engine) as db:
+            with self.assertRaises(HTTPException) as raised:
+                _upsert_oauth_user(
+                    db,
+                    provider="google",
+                    provider_id="google-user-id",
+                    email="oauth-user@example.test",
+                    full_name="OAuth User",
+                    avatar_url="https://lh3.googleusercontent.com/avatar.png",
+                    is_verified=False,
+                    settings=Settings(_env_file=None),
+                )
+
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertIn("verified", str(raised.exception.detail).lower())
 
 
 if __name__ == "__main__":
