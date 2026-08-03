@@ -59,9 +59,9 @@ PLAN_NAMES: dict[str, str] = {
 
 PLAN_LEAD_LIMITS: dict[str, int] = {
     "free": 10,
-    "basic": 600,
-    "agent": 1300,
-    "agency": 2400,
+    "basic": 400,
+    "agent": 800,
+    "agency": 1500,
 }
 
 PLAN_OUTREACH_DAILY_LIMITS: dict[str, int | None] = {

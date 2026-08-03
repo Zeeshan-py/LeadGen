@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.database import Base
 from app.models import PaddleSubscription, User
-from app.paddle_billing import create_checkout_payload, process_paddle_webhook, verify_paddle_signature
+from app.paddle_billing import billing_plans, create_checkout_payload, process_paddle_webhook, verify_paddle_signature
 from app.paddle_routes import paddle_webhook_status
 
 
@@ -123,6 +123,13 @@ class PaddleBillingTests(unittest.TestCase):
         self.assertEqual(payload.custom_data["leadforge_user_id"], user_id)
         self.assertEqual(payload.custom_data["email"], "buyer@example.test")
         self.assertEqual(payload.custom_data["current_plan"], "basic")
+
+    def test_billing_plan_copy_matches_lead_quotas(self) -> None:
+        plans = {plan.key: plan for plan in billing_plans(self.settings)}
+
+        self.assertIn("400 leads per month", plans["basic"].features)
+        self.assertIn("800 leads per month", plans["agent"].features)
+        self.assertIn("1,500 leads per month", plans["agency"].features)
 
     def test_webhook_get_reports_endpoint_status(self) -> None:
         payload = paddle_webhook_status()

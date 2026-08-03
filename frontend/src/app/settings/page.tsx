@@ -81,9 +81,9 @@ import type {
 
 const planLeadLimits: Record<string, number> = {
   free: 10,
-  basic: 600,
-  agent: 1300,
-  agency: 2400,
+  basic: 400,
+  agent: 800,
+  agency: 1500,
 };
 
 export default function SettingsPage() {

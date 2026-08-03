@@ -56,7 +56,7 @@ def billing_plans(settings: Settings) -> list[BillingPlan]:
             interval="month",
             configured=bool(settings.paddle_basic_price_id and settings.paddle_basic_product_id),
             features=[
-                "600 leads per month",
+                "400 leads per month",
                 "Lead generation workspace",
                 "CRM pipeline",
                 "Gmail outreach connection",
@@ -77,7 +77,7 @@ def billing_plans(settings: Settings) -> list[BillingPlan]:
             highlighted=True,
             configured=bool(settings.paddle_agent_price_id and settings.paddle_agent_product_id),
             features=[
-                "1,300 leads per month",
+                "800 leads per month",
                 "Everything in Basic",
                 "Campaign management",
                 "Advanced filters",
@@ -96,7 +96,7 @@ def billing_plans(settings: Settings) -> list[BillingPlan]:
             interval="month",
             configured=bool(settings.paddle_agency_price_id and settings.paddle_agency_product_id),
             features=[
-                "2,400 leads per month",
+                "1,500 leads per month",
                 "Everything in Agent",
                 "AI SDR workspace",
                 "Twilio calling and voice settings",

@@ -100,15 +100,39 @@ class SubscriptionAccessTests(unittest.TestCase):
                 )
             db.commit()
 
+            access = subscription_access_payload(db, user)
             require_feature(db, user, "crm")
             with self.assertRaises(HTTPException) as raised:
                 require_feature(db, user, "campaigns")
             with self.assertRaises(HTTPException) as limit_raised:
                 assert_outreach_send_allowed(db, user)
 
+        self.assertEqual(access["lead_limit"], 400)
         self.assertEqual(raised.exception.detail["required_plan"], "agent")
         self.assertEqual(limit_raised.exception.detail["code"], "limit_reached")
         self.assertEqual(limit_raised.exception.detail["usage"]["limit"], 7)
+
+    def test_agent_plan_uses_reduced_monthly_lead_limit(self) -> None:
+        with Session(self.engine) as db:
+            user = User(email="agent@example.test", full_name="Agent User")
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            db.add(
+                PaddleSubscription(
+                    subscription_id="sub_agent",
+                    user_id=user.id,
+                    customer_id="ctm_agent",
+                    status="active",
+                    plan_key="agent",
+                    current_period_ends_at=datetime.now(timezone.utc) + timedelta(days=20),
+                )
+            )
+            db.commit()
+
+            access = subscription_access_payload(db, user)
+
+        self.assertEqual(access["lead_limit"], 800)
 
     def test_agency_plan_unlocks_ai_sdr_and_reply_sync(self) -> None:
         with Session(self.engine) as db:
@@ -134,6 +158,7 @@ class SubscriptionAccessTests(unittest.TestCase):
 
         self.assertTrue(access["features"]["ai_sdr"])
         self.assertTrue(access["features"]["reply_sync"])
+        self.assertEqual(access["lead_limit"], 1500)
         self.assertIsNone(access["outreach_daily_limit"])
 
     def test_admin_user_unlocks_all_features_without_subscription(self) -> None:
