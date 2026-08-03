@@ -136,6 +136,33 @@ class SubscriptionAccessTests(unittest.TestCase):
         self.assertTrue(access["features"]["reply_sync"])
         self.assertIsNone(access["outreach_daily_limit"])
 
+    def test_admin_user_unlocks_all_features_without_subscription(self) -> None:
+        with Session(self.engine) as db:
+            user = User(email="admin@example.test", full_name="Admin User", is_admin=True)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+            access = subscription_access_payload(db, user)
+            require_feature(db, user, "crm")
+            require_feature(db, user, "analytics")
+            require_feature(db, user, "campaigns")
+            require_feature(db, user, "ai_sdr")
+            assert_generate_leads_allowed(
+                db,
+                user,
+                requested_count=5000,
+                website_mode="allPlaces",
+                campaign_name="Admin campaign",
+            )
+            assert_outreach_send_allowed(db, user)
+
+        self.assertEqual(access["plan_key"], "agency")
+        self.assertEqual(access["plan_name"], "Admin")
+        self.assertEqual(access["status"], "admin")
+        self.assertTrue(all(access["features"].values()))
+        self.assertIsNone(access["outreach_daily_limit"])
+
 
 if __name__ == "__main__":
     unittest.main()

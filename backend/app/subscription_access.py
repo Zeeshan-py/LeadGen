@@ -71,6 +71,8 @@ PLAN_OUTREACH_DAILY_LIMITS: dict[str, int | None] = {
     "agency": None,
 }
 
+ADMIN_LEAD_LIMIT = 1_000_000
+
 FEATURE_REQUIREMENTS: dict[FeatureKey, PlanKey] = {
     "lead_generation": "free",
     "standard_filters": "basic",
@@ -131,6 +133,8 @@ def plan_includes(current_plan: str, required_plan: str) -> bool:
 
 
 def current_plan_key(db: Session, user: User) -> PlanKey:
+    if user.is_admin:
+        return "agency"
     subscription = get_primary_subscription_for_user(db, user.id)
     if not subscription:
         return "free"
@@ -138,6 +142,25 @@ def current_plan_key(db: Session, user: User) -> PlanKey:
 
 
 def subscription_access_payload(db: Session, user: User) -> dict[str, Any]:
+    if user.is_admin:
+        leads_used = monthly_leads_used(db, user.id)
+        outreach_sent_today = daily_outreach_sent(db, user.id)
+        return {
+            "plan_key": "agency",
+            "plan_name": "Admin",
+            "status": "admin",
+            "access_active": True,
+            "access_until": None,
+            "lead_limit": ADMIN_LEAD_LIMIT,
+            "leads_used": leads_used,
+            "leads_remaining": max(ADMIN_LEAD_LIMIT - leads_used, 0),
+            "outreach_daily_limit": None,
+            "outreach_sent_today": outreach_sent_today,
+            "outreach_remaining_today": None,
+            "features": {feature: True for feature in FEATURE_REQUIREMENTS},
+            "requirements": FEATURE_REQUIREMENTS,
+            "feature_labels": FEATURE_LABELS,
+        }
     subscription = get_primary_subscription_for_user(db, user.id)
     plan_key = normalize_plan_key(subscription_access_plan(subscription)) if subscription else "free"
     leads_used = monthly_leads_used(db, user.id)
@@ -188,6 +211,8 @@ def require_feature_user(feature: FeatureKey):
 
 
 def require_feature(db: Session, user: User, feature: FeatureKey) -> None:
+    if user.is_admin:
+        return
     plan_key = current_plan_key(db, user)
     required_plan = FEATURE_REQUIREMENTS[feature]
     if plan_includes(plan_key, required_plan):
@@ -196,6 +221,8 @@ def require_feature(db: Session, user: User, feature: FeatureKey) -> None:
 
 
 def assert_generate_leads_allowed(db: Session, user: User, *, requested_count: int, website_mode: str, campaign_name: str | None) -> None:
+    if user.is_admin:
+        return
     require_feature(db, user, "lead_generation")
     plan_key = current_plan_key(db, user)
 
@@ -235,6 +262,8 @@ def assert_lead_filters_allowed(
     outreach_status: str,
     contact: str,
 ) -> None:
+    if user.is_admin:
+        return
     plan_key = current_plan_key(db, user)
     if campaign_id and not plan_includes(plan_key, "agent"):
         raise_subscription_required("campaigns", "agent", plan_key)
@@ -247,6 +276,8 @@ def assert_lead_filters_allowed(
 
 
 def assert_outreach_send_allowed(db: Session, user: User) -> None:
+    if user.is_admin:
+        return
     require_feature(db, user, "outreach")
     plan_key = current_plan_key(db, user)
     daily_limit = PLAN_OUTREACH_DAILY_LIMITS[plan_key]
