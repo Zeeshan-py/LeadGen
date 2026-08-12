@@ -181,6 +181,10 @@ export function getGenerationJob(jobId: string) {
   return request<GenerationJob>(`/generate-leads/${jobId}`);
 }
 
+export function cancelGenerationJob(jobId: string) {
+  return request<GenerationJob>(`/generate-leads/${jobId}/cancel`, { method: "POST" });
+}
+
 export function getLatestGenerationJob() {
   return request<GenerationJob | null>("/generate-leads/latest");
 }

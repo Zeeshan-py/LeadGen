@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, BrainCircuit, LockKeyhole, Mail } from "lucide-react";
+import { ArrowRight, LockKeyhole, Mail } from "lucide-react";
 import { toast } from "sonner";
 
+import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -50,9 +51,7 @@ export default function LoginPage() {
       <Card className="glass-panel w-full max-w-md">
         <CardHeader className="space-y-4">
           <Link href="/" className="flex items-center gap-3">
-            <div className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <BrainCircuit className="size-5" />
-            </div>
+            <BrandLogo />
             <div>
               <CardTitle className="text-xl">Login</CardTitle>
               <p className="text-sm text-muted-foreground">LeadForge AI</p>

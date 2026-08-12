@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { BrainCircuit } from "lucide-react";
 
+import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 
 type Section = {
@@ -23,9 +23,7 @@ export function PublicInfoPage({
     <main className="score-grid min-h-svh">
       <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-4 py-5 md:px-6">
         <Link href="/" className="flex items-center gap-3">
-          <div className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground">
-            <BrainCircuit className="size-5" />
-          </div>
+          <BrandLogo />
           <div>
             <p className="text-sm font-semibold">LeadForge AI</p>
             <p className="text-xs text-muted-foreground">Private workspace SaaS</p>

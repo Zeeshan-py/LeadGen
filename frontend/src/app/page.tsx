@@ -3,7 +3,6 @@ import {
   ArrowRight,
   BarChart3,
   Bot,
-  BrainCircuit,
   Building2,
   CheckCircle2,
   Database,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StructuredData } from "@/components/structured-data";
@@ -103,9 +103,7 @@ export default function LandingPage() {
       <StructuredData data={[organizationJsonLd(), softwareApplicationJsonLd(), websiteJsonLd()]} />
       <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-4 py-5 md:px-6">
         <Link href="/" className="flex items-center gap-3">
-          <div className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground">
-            <BrainCircuit className="size-5" />
-          </div>
+          <BrandLogo />
           <div>
             <p className="text-sm font-semibold">LeadForge AI</p>
             <p className="text-xs text-muted-foreground">Private workspace SaaS</p>

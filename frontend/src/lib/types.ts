@@ -220,7 +220,7 @@ export type PaddleSubscription = {
   scheduled_change_action: string;
   scheduled_change_effective_at: string | null;
   management_urls: Record<string, unknown>;
-  access_plan: string;
+  access_plan: PlanKey;
   access_until: string | null;
   access_active: boolean;
   cancel_at_period_end: boolean;
@@ -268,7 +268,7 @@ export type BillingHistory = {
   transactions: PaddleTransaction[];
 };
 
-export type PlanKey = "free" | "basic" | "agent" | "agency";
+export type PlanKey = "none" | "basic" | "agent" | "agency";
 
 export type FeatureKey =
   | "lead_generation"

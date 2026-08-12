@@ -80,7 +80,7 @@ import type {
 } from "@/lib/types";
 
 const planLeadLimits: Record<string, number> = {
-  free: 10,
+  none: 0,
   basic: 400,
   agent: 800,
   agency: 1500,
@@ -194,8 +194,8 @@ export default function SettingsPage() {
     };
   }, [canOutreach, canTwilio, subscription.loading]);
 
-  const planKey = subscription.access?.plan_key || billing?.subscription?.access_plan || "free";
-  const leadLimit = subscription.access?.lead_limit ?? planLeadLimits[planKey] ?? planLeadLimits.free;
+  const planKey = subscription.access?.plan_key || billing?.subscription?.access_plan || "none";
+  const leadLimit = subscription.access?.lead_limit ?? planLeadLimits[planKey] ?? planLeadLimits.none;
   const leadsUsed = subscription.access?.leads_used ?? 0;
   const planName = titleCase(planKey);
   const renewalDate = billing?.subscription?.next_billed_at || billing?.subscription?.access_until || "";
@@ -1232,7 +1232,7 @@ function twilioHealthLabel(status: TwilioConnectionStatus | null) {
 }
 
 function titleCase(value: string) {
-  if (!value) return "Free";
+  if (!value || value === "none") return "No active plan";
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 

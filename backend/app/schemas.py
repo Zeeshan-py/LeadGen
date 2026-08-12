@@ -271,7 +271,7 @@ class PaddleSubscriptionRead(BaseModel):
     scheduled_change_action: str = ""
     scheduled_change_effective_at: datetime | None = None
     management_urls: dict[str, Any] = Field(default_factory=dict)
-    access_plan: str = "free"
+    access_plan: str = "none"
     access_until: datetime | None = None
     access_active: bool = False
     cancel_at_period_end: bool = False

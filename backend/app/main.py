@@ -44,7 +44,16 @@ from .google_sheets import validate_google_sheets
 from .models import Analytics, Campaign, EmailMessage, Lead, LeadGenerationJob, Outreach, Setting, User
 from .paddle_routes import router as paddle_router
 from .rate_limit import enforce_rate_limit, rate_limit_key
-from .runner import create_generation_job, get_job, get_job_snapshot, get_latest_job_snapshot, run_generation_job
+from .job_state import GenerationJobAlreadyActive
+from .runner import (
+    cancel_generation_job,
+    create_generation_job,
+    get_active_job_snapshot,
+    get_job,
+    get_job_snapshot,
+    get_latest_job_snapshot,
+    run_generation_job,
+)
 from .schemas import (
     AnalyticsResponse,
     CampaignCreate,
@@ -65,6 +74,7 @@ from .subscription_access import (
     assert_lead_filters_allowed,
     assert_outreach_send_allowed,
     require_feature,
+    require_platform_access,
 )
 from .twilio_routes import router as twilio_router
 
@@ -117,7 +127,12 @@ SEO_FILE_PATHS = {
     "/sitemap.xml",
     "/manifest.webmanifest",
     "/favicon.ico",
-    "/brand/icon.svg",
+    "/brand/leadforge-icon.png",
+    "/brand/apple-touch-icon.png",
+    "/brand/icon-16.png",
+    "/brand/icon-32.png",
+    "/brand/icon-48.png",
+    "/brand/icon-96.png",
     "/brand/icon-192.png",
     "/brand/icon-512.png",
     "/brand/leadforge-og.png",
@@ -258,6 +273,8 @@ async def protect_api_routes(request: Request, call_next):
         try:
             user = authenticate_request(request, db, settings)
             _enforce_api_rate_limit(request, path, user.id)
+            if _requires_paid_api_access(path):
+                require_platform_access(db, user)
         except HTTPException as exc:
             return JSONResponse(
                 status_code=exc.status_code,
@@ -343,7 +360,25 @@ def generate_leads(
         website_mode=payload.website_mode,
         campaign_name=payload.campaign_name,
     )
-    job = create_generation_job(payload, current_user.id)
+    active_job = get_active_job_snapshot(current_user.id)
+    if active_job:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Lead generation is already running.",
+                "job": active_job,
+            },
+        )
+    try:
+        job = create_generation_job(payload, current_user.id)
+    except GenerationJobAlreadyActive as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Lead generation is already running.",
+                "job": exc.snapshot,
+            },
+        ) from exc
     background_tasks.add_task(run_generation_job, job.id, payload, current_user.id)
     return JobCreated(
         job_id=job.id,
@@ -360,6 +395,14 @@ def get_latest_generate_job(current_user: User = Depends(get_current_user)) -> d
 @app.get("/generate-leads/{job_id}")
 def get_generate_job(job_id: str, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
     snapshot = get_job_snapshot(job_id, current_user.id)
+    if not snapshot:
+        raise HTTPException(status_code=404, detail="Generation job not found")
+    return snapshot
+
+
+@app.post("/generate-leads/{job_id}/cancel")
+def cancel_generate_job(job_id: str, current_user: User = Depends(get_current_user)) -> dict[str, Any]:
+    snapshot = cancel_generation_job(job_id, current_user.id)
     if not snapshot:
         raise HTTPException(status_code=404, detail="Generation job not found")
     return snapshot
@@ -389,7 +432,7 @@ async def stream_generate_job(
             try:
                 event = await asyncio.to_thread(job.events.get, True, 15)
                 yield _sse(event)
-                if event.get("status") in {"completed", "failed"}:
+                if event.get("status") in {"completed", "failed", "canceled"}:
                     break
             except Exception:
                 yield ": heartbeat\n\n"
@@ -980,6 +1023,10 @@ def _is_public_api_path(path: str) -> bool:
     return path in PUBLIC_API_EXACT_PATHS or any(
         path == prefix or path.startswith(f"{prefix}/") for prefix in PUBLIC_API_PREFIXES
     )
+
+
+def _requires_paid_api_access(path: str) -> bool:
+    return _is_protected_api_path(path) and not (path == "/billing" or path.startswith("/billing/"))
 
 
 def _wants_frontend_document(request: Request) -> bool:

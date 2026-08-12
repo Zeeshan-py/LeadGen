@@ -93,7 +93,7 @@ export function LockedFeaturePage({
               </Link>
             </Button>
             <Button asChild>
-              <Link href={`/pricing?plan=${requiredPlan === "free" ? "basic" : requiredPlan}`}>
+              <Link href={`/pricing?plan=${requiredPlan}`}>
                 <CreditCard />
                 Upgrade Plan
               </Link>
@@ -131,7 +131,7 @@ export function UpgradeModal() {
             Maybe Later
           </Button>
           <Button asChild onClick={closeUpgrade}>
-            <Link href={`/pricing?plan=${requiredPlan === "free" ? "basic" : requiredPlan}`}>
+            <Link href={`/pricing?plan=${requiredPlan}`}>
               <CreditCard />
               Upgrade Now
             </Link>
@@ -145,7 +145,7 @@ export function UpgradeModal() {
 export function PlanBadge({ feature }: { feature: FeatureKey }) {
   const { requiredPlanFor } = useSubscription();
   const requiredPlan = requiredPlanFor(feature);
-  if (requiredPlan === "free") return null;
+  if (requiredPlan === "none") return null;
   return (
     <Badge variant="outline" className="border-primary/25 bg-primary/10 text-[10px] uppercase text-primary">
       {requiredPlan}

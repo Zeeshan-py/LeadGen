@@ -24,37 +24,33 @@ class SubscriptionAccessTests(unittest.TestCase):
         self.engine = create_engine("sqlite+pysqlite:///:memory:")
         Base.metadata.create_all(self.engine)
 
-    def test_free_plan_has_basic_lead_generation_only(self) -> None:
+    def test_user_without_subscription_has_no_platform_access(self) -> None:
         with Session(self.engine) as db:
-            user = User(email="free@example.test", full_name="Free User")
+            user = User(email="noplan@example.test", full_name="No Plan User")
             db.add(user)
             db.commit()
             db.refresh(user)
 
             access = subscription_access_payload(db, user)
+            with self.assertRaises(HTTPException) as raised:
+                require_feature(db, user, "lead_generation")
 
-        self.assertEqual(access["plan_key"], "free")
-        self.assertEqual(access["lead_limit"], 10)
-        self.assertTrue(access["features"]["lead_generation"])
+        self.assertEqual(access["plan_key"], "none")
+        self.assertEqual(access["plan_name"], "No active plan")
+        self.assertEqual(access["lead_limit"], 0)
+        self.assertFalse(access["access_active"])
+        self.assertFalse(access["features"]["lead_generation"])
         self.assertFalse(access["features"]["crm"])
         self.assertFalse(access["features"]["csv_export"])
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertEqual(raised.exception.detail["required_plan"], "basic")
 
-    def test_free_plan_monthly_lead_limit_blocks_generation(self) -> None:
+    def test_user_without_subscription_cannot_generate_leads(self) -> None:
         with Session(self.engine) as db:
             user = User(email="limit@example.test", full_name="Limit User")
             db.add(user)
             db.commit()
             db.refresh(user)
-            for index in range(10):
-                db.add(
-                    Lead(
-                        user_id=user.id,
-                        dedupe_key=f"lead-{index}",
-                        business_name=f"Lead {index}",
-                        created_at=datetime.now(timezone.utc),
-                    )
-                )
-            db.commit()
 
             with self.assertRaises(HTTPException) as raised:
                 assert_generate_leads_allowed(
@@ -66,8 +62,8 @@ class SubscriptionAccessTests(unittest.TestCase):
                 )
 
         self.assertEqual(raised.exception.status_code, 403)
-        self.assertEqual(raised.exception.detail["code"], "limit_reached")
-        self.assertEqual(raised.exception.detail["usage"]["limit"], 10)
+        self.assertEqual(raised.exception.detail["code"], "subscription_required")
+        self.assertEqual(raised.exception.detail["required_plan"], "basic")
 
     def test_basic_plan_allows_crm_and_limits_daily_outreach(self) -> None:
         with Session(self.engine) as db:

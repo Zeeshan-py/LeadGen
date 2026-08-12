@@ -140,7 +140,7 @@ def create_checkout_payload(db: Session, user: User, settings: Settings, plan_ke
         raise PaddleConfigurationError(f"{missing} is not configured")
 
     subscription = get_primary_subscription_for_user(db, user.id)
-    current_plan = subscription_access_plan(subscription) if subscription else "free"
+    current_plan = subscription_access_plan(subscription) if subscription else "none"
     customer = get_customer_for_user(db, user.id)
 
     return PaddleCheckoutSession(
@@ -338,7 +338,7 @@ def billing_overview(db: Session, user: User, settings: Settings) -> BillingOver
 
 
 def subscription_access_plan(subscription: PaddleSubscription) -> str:
-    return subscription.plan_key if subscription_access_active(subscription) else "free"
+    return subscription.plan_key if subscription_access_active(subscription) else "none"
 
 
 def subscription_access_until(subscription: PaddleSubscription) -> datetime | None:

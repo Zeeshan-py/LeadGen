@@ -25,21 +25,21 @@ type SubscriptionContextValue = {
 };
 
 const planOrder: Record<PlanKey, number> = {
-  free: 0,
+  none: 0,
   basic: 1,
   agent: 2,
   agency: 3,
 };
 
 const planNames: Record<PlanKey, string> = {
-  free: "Free",
+  none: "No active plan",
   basic: "Basic",
   agent: "Agent",
   agency: "Agency",
 };
 
 const defaultRequirements: Record<FeatureKey, PlanKey> = {
-  lead_generation: "free",
+  lead_generation: "basic",
   standard_filters: "basic",
   advanced_filters: "agent",
   crm: "basic",
@@ -129,7 +129,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
       if (access?.features?.[feature] !== undefined) {
         return access.features[feature];
       }
-      const plan = access?.plan_key ?? "free";
+      const plan = access?.plan_key ?? "none";
       return planOrder[plan] >= planOrder[requiredPlanFor(feature)];
     },
     [access, requiredPlanFor],

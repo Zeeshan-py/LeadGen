@@ -22,9 +22,9 @@ export default function manifest(): MetadataRoute.Manifest {
         type: "image/x-icon",
       },
       {
-        src: "/brand/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/brand/icon-96.png",
+        sizes: "96x96",
+        type: "image/png",
         purpose: "any",
       },
       {

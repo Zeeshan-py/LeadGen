@@ -126,8 +126,8 @@ export default function DashboardHome() {
     };
   }, [canUseOutreach, canUseTwilio, canViewAnalytics, canViewCampaigns, subscriptionLoading]);
 
-  const planName = subscription.access?.plan_name ?? "Free";
-  const leadLimit = subscription.access?.lead_limit ?? 10;
+  const planName = subscription.access?.plan_name ?? "No active plan";
+  const leadLimit = subscription.access?.lead_limit ?? 0;
   const leadsGenerated = subscription.access?.leads_used ?? state.analytics?.total_leads_generated ?? state.leads.length;
   const emailsSent = state.analytics?.emails_sent ?? 0;
   const replies = state.analytics?.replies_received ?? 0;
@@ -136,7 +136,7 @@ export default function DashboardHome() {
   const connectedAccounts = [state.gmail?.is_connected, state.twilio?.is_connected].filter(Boolean).length;
   const remainingLeads = subscription.access?.leads_remaining ?? Math.max(leadLimit - leadsGenerated, 0);
   const renewalDate = subscription.access?.access_until || "";
-  const subscriptionStatus = subscription.access?.status || "Free workspace";
+  const subscriptionStatus = subscription.access?.status || "No active subscription";
 
   const metrics = useMemo<MetricCard[]>(
     () => [

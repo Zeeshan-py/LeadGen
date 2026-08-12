@@ -12,7 +12,6 @@ import { usePathname } from "next/navigation";
 import {
   BarChart3,
   Bot,
-  BrainCircuit,
   ContactRound,
   CreditCard,
   Gauge,
@@ -44,6 +43,7 @@ import {
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Badge } from "@/components/ui/badge";
+import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { PlanBadge, UpgradeModal } from "@/components/subscription-gate";
 import { useAuth } from "@/lib/auth";
@@ -76,9 +76,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar collapsible="icon" className="border-sidebar-border/80">
         <SidebarHeader className="p-4">
           <div className="flex items-center gap-3 rounded-lg border border-sidebar-border/70 bg-sidebar-accent/45 p-3">
-            <div className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <BrainCircuit />
-            </div>
+            <BrandLogo />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">LeadForge AI</p>
               <p className="truncate text-xs text-sidebar-foreground/60">Private workspace</p>

@@ -25,7 +25,7 @@ from .paddle_billing import (
     subscription_access_until,
 )
 
-PlanKey = Literal["free", "basic", "agent", "agency"]
+PlanKey = Literal["none", "basic", "agent", "agency"]
 FeatureKey = Literal[
     "lead_generation",
     "standard_filters",
@@ -44,28 +44,28 @@ FeatureKey = Literal[
 ]
 
 PLAN_ORDER: dict[str, int] = {
-    "free": 0,
+    "none": 0,
     "basic": 1,
     "agent": 2,
     "agency": 3,
 }
 
 PLAN_NAMES: dict[str, str] = {
-    "free": "Free",
+    "none": "No active plan",
     "basic": "Basic",
     "agent": "Agent",
     "agency": "Agency",
 }
 
 PLAN_LEAD_LIMITS: dict[str, int] = {
-    "free": 10,
+    "none": 0,
     "basic": 400,
     "agent": 800,
     "agency": 1500,
 }
 
 PLAN_OUTREACH_DAILY_LIMITS: dict[str, int | None] = {
-    "free": 0,
+    "none": 0,
     "basic": 7,
     "agent": 20,
     "agency": None,
@@ -74,7 +74,7 @@ PLAN_OUTREACH_DAILY_LIMITS: dict[str, int | None] = {
 ADMIN_LEAD_LIMIT = 1_000_000
 
 FEATURE_REQUIREMENTS: dict[FeatureKey, PlanKey] = {
-    "lead_generation": "free",
+    "lead_generation": "basic",
     "standard_filters": "basic",
     "advanced_filters": "agent",
     "crm": "basic",
@@ -125,7 +125,7 @@ UPGRADE_BENEFITS: dict[str, list[str]] = {
 
 def normalize_plan_key(value: str | None) -> PlanKey:
     key = (value or "").strip().lower()
-    return key if key in PLAN_ORDER else "free"  # type: ignore[return-value]
+    return key if key in PLAN_ORDER else "none"  # type: ignore[return-value]
 
 
 def plan_includes(current_plan: str, required_plan: str) -> bool:
@@ -137,7 +137,7 @@ def current_plan_key(db: Session, user: User) -> PlanKey:
         return "agency"
     subscription = get_primary_subscription_for_user(db, user.id)
     if not subscription:
-        return "free"
+        return "none"
     return normalize_plan_key(subscription_access_plan(subscription))
 
 
@@ -162,7 +162,7 @@ def subscription_access_payload(db: Session, user: User) -> dict[str, Any]:
             "feature_labels": FEATURE_LABELS,
         }
     subscription = get_primary_subscription_for_user(db, user.id)
-    plan_key = normalize_plan_key(subscription_access_plan(subscription)) if subscription else "free"
+    plan_key = normalize_plan_key(subscription_access_plan(subscription)) if subscription else "none"
     leads_used = monthly_leads_used(db, user.id)
     outreach_sent_today = daily_outreach_sent(db, user.id)
     lead_limit = PLAN_LEAD_LIMITS[plan_key]
@@ -174,8 +174,8 @@ def subscription_access_payload(db: Session, user: User) -> dict[str, Any]:
     return {
         "plan_key": plan_key,
         "plan_name": PLAN_NAMES[plan_key],
-        "status": subscription.status if subscription else "free",
-        "access_active": bool(subscription_access_active(subscription)) if subscription else True,
+        "status": subscription.status if subscription else "no_subscription",
+        "access_active": bool(subscription_access_active(subscription)) if subscription else False,
         "access_until": subscription_access_until(subscription) if subscription else None,
         "lead_limit": lead_limit,
         "leads_used": leads_used,
@@ -220,14 +220,21 @@ def require_feature(db: Session, user: User, feature: FeatureKey) -> None:
     raise_subscription_required(feature, required_plan, plan_key)
 
 
+def require_platform_access(db: Session, user: User) -> None:
+    if user.is_admin:
+        return
+    plan_key = current_plan_key(db, user)
+    if plan_includes(plan_key, "basic"):
+        return
+    raise_subscription_required("lead_generation", "basic", plan_key)
+
+
 def assert_generate_leads_allowed(db: Session, user: User, *, requested_count: int, website_mode: str, campaign_name: str | None) -> None:
     if user.is_admin:
         return
     require_feature(db, user, "lead_generation")
     plan_key = current_plan_key(db, user)
 
-    if plan_key == "free" and website_mode != "withWebsite":
-        raise_subscription_required("standard_filters", "basic", plan_key)
     if website_mode == "allPlaces" and not plan_includes(plan_key, "agent"):
         raise_subscription_required("advanced_filters", "agent", plan_key)
     if campaign_name and not plan_includes(plan_key, "agent"):
@@ -264,6 +271,7 @@ def assert_lead_filters_allowed(
 ) -> None:
     if user.is_admin:
         return
+    require_feature(db, user, "lead_generation")
     plan_key = current_plan_key(db, user)
     if campaign_id and not plan_includes(plan_key, "agent"):
         raise_subscription_required("campaigns", "agent", plan_key)
@@ -394,7 +402,7 @@ def _day_start() -> datetime:
 
 def _next_plan(plan_key: str) -> PlanKey:
     plan = normalize_plan_key(plan_key)
-    if plan == "free":
+    if plan == "none":
         return "basic"
     if plan == "basic":
         return "agent"

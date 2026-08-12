@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { initializePaddle, type Environments, type Paddle, type PaddleEventData } from "@paddle/paddle-js";
-import { ArrowRight, BrainCircuit, Check, CreditCard, Loader2 } from "lucide-react";
+import { ArrowRight, Check, CreditCard, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { BrandLogo } from "@/components/brand-logo";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { createPaddleCheckout, getBillingPlans } from "@/lib/api";
@@ -140,9 +141,7 @@ export function PricingCheckout() {
       <header className="border-b border-border/70 bg-background/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 md:px-6">
           <Link href="/" className="flex items-center gap-3" aria-label="LeadForge AI home">
-            <span className="grid size-10 place-items-center rounded-lg bg-primary text-primary-foreground">
-              <BrainCircuit className="size-5" />
-            </span>
+            <BrandLogo />
             <span className="font-semibold">LeadForge AI</span>
           </Link>
           <nav aria-label="Primary" className="hidden items-center gap-1 text-sm text-muted-foreground md:flex">

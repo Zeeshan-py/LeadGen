@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { LockKeyhole, Play, Sparkles } from "lucide-react";
+import { LockKeyhole, Play, Sparkles, Square } from "lucide-react";
 import { toast } from "sonner";
 
 import { PipelineProgress } from "@/components/pipeline-progress";
@@ -18,7 +18,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { generationEventsUrl, getGenerationJob, getLatestGenerationJob, startGeneration } from "@/lib/api";
+import {
+  cancelGenerationJob,
+  generationEventsUrl,
+  getGenerationJob,
+  getLatestGenerationJob,
+  startGeneration,
+} from "@/lib/api";
 import { trackLeadGeneration, trackOutreachCampaign } from "@/lib/analytics";
 import { useSubscription } from "@/lib/subscription";
 import {
@@ -31,7 +37,7 @@ import type { GenerationJob } from "@/lib/types";
 
 const leadLimits = [10, 25, 50, 100, 250, 500];
 const lastGenerationJobKey = "leadforge.lastGenerationJobId";
-const terminalStatuses = new Set(["completed", "failed"]);
+const terminalStatuses = new Set(["completed", "failed", "canceled"]);
 
 function isTerminalJob(job: GenerationJob) {
   return terminalStatuses.has(job.status);
@@ -49,7 +55,10 @@ export default function LeadGeneratorPage() {
   });
   const [job, setJob] = useState<GenerationJob | null>(null);
   const [running, setRunning] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const sourceRef = useRef<EventSource | null>(null);
+  const generateRequestRef = useRef(false);
+  const stopRequestRef = useRef(false);
   const countries = countriesByContinent[form.continent];
   const leadsRemaining = subscription.access?.leads_remaining ?? 10;
   const leadLimit = subscription.access?.lead_limit ?? 10;
@@ -93,8 +102,12 @@ export default function LeadGeneratorPage() {
         if (isTerminalJob(next)) {
           closeStream();
           setRunning(false);
+          setStopping(false);
+          stopRequestRef.current = false;
           if (next.status === "completed") {
             toast.success("Lead generation completed");
+          } else if (next.status === "canceled") {
+            toast.success("Lead generation stopped");
           } else {
             toast.error("Lead generation failed");
           }
@@ -107,7 +120,11 @@ export default function LeadGeneratorPage() {
         }
         closeStream();
         setRunning(false);
-        toast.error("Pipeline stream disconnected");
+        setStopping(false);
+        if (!stopRequestRef.current) {
+          toast.error("Pipeline stream disconnected");
+        }
+        stopRequestRef.current = false;
       };
     },
     [closeStream],
@@ -129,6 +146,7 @@ export default function LeadGeneratorPage() {
         }
         setJob(restoredJob);
         setRunning(!isTerminalJob(restoredJob));
+        setStopping(restoredJob.status === "canceling");
         if (!isTerminalJob(restoredJob)) {
           connectToJob(restoredJob.job_id);
         }
@@ -147,13 +165,18 @@ export default function LeadGeneratorPage() {
   }, [closeStream, connectToJob]);
 
   async function onGenerate() {
-    if (!canRun || running) {
+    if (generateRequestRef.current || running) {
+      return;
+    }
+    if (!canRun) {
       if (leadLimitReached || form.max_leads > leadsRemaining) {
         subscription.openUpgrade("lead_generation", ["Higher monthly lead limits", "More prospect generation", "Premium workspace capacity"]);
       }
       return;
     }
+    generateRequestRef.current = true;
     setRunning(true);
+    setStopping(false);
     try {
       const created = await startGeneration(form);
       trackLeadGeneration({
@@ -173,7 +196,33 @@ export default function LeadGeneratorPage() {
       connectToJob(created.job_id);
     } catch (error) {
       setRunning(false);
+      setStopping(false);
       toast.error(error instanceof Error ? error.message : "Generation failed");
+    } finally {
+      generateRequestRef.current = false;
+    }
+  }
+
+  async function onStopGeneration() {
+    if (!job || isTerminalJob(job) || stopRequestRef.current) {
+      return;
+    }
+    stopRequestRef.current = true;
+    setStopping(true);
+    try {
+      const next = await cancelGenerationJob(job.job_id);
+      setJob(next);
+      if (isTerminalJob(next)) {
+        closeStream();
+        setRunning(false);
+        setStopping(false);
+      } else {
+        toast.message("Stopping lead generation...");
+      }
+    } catch (error) {
+      setStopping(false);
+      stopRequestRef.current = false;
+      toast.error(error instanceof Error ? error.message : "Unable to stop generation");
     }
   }
 
@@ -319,10 +368,17 @@ export default function LeadGeneratorPage() {
                 </SelectContent>
               </Select>
             </Field>
-            <Button size="lg" className="w-full" disabled={running || (!canRun && !leadLimitReached)} onClick={onGenerate}>
-              {leadLimitReached ? <LockKeyhole data-icon="inline-start" /> : <Play data-icon="inline-start" />}
-              {leadLimitReached ? "Upgrade to Generate More" : "Generate Leads"}
-            </Button>
+            {running && job && !isTerminalJob(job) ? (
+              <Button size="lg" variant="outline" className="w-full" disabled={stopping} onClick={onStopGeneration}>
+                <Square data-icon="inline-start" />
+                {stopping || job.status === "canceling" ? "Stopping..." : "Stop"}
+              </Button>
+            ) : (
+              <Button size="lg" className="w-full" disabled={!canRun && !leadLimitReached} onClick={onGenerate}>
+                {leadLimitReached ? <LockKeyhole data-icon="inline-start" /> : <Play data-icon="inline-start" />}
+                {leadLimitReached ? "Upgrade to Generate More" : "Generate Leads"}
+              </Button>
+            )}
           </FieldGroup>
         </CardContent>
       </Card>

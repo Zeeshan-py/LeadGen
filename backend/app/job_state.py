@@ -29,6 +29,14 @@ PIPELINE = [
 ]
 
 logger = logging.getLogger(__name__)
+ACTIVE_JOB_STATUSES = {"queued", "running", "canceling"}
+TERMINAL_JOB_STATUSES = {"completed", "failed", "canceled"}
+
+
+class GenerationJobAlreadyActive(RuntimeError):
+    def __init__(self, snapshot: dict[str, Any]) -> None:
+        super().__init__("A lead generation job is already running")
+        self.snapshot = snapshot
 
 
 @dataclass
@@ -43,6 +51,7 @@ class GenerationJobState:
     failure_counter: int = 0
     campaign_id: str | None = None
     error: str = ""
+    cancel_requested: bool = False
     events: queue.Queue[dict[str, Any]] = field(default_factory=queue.Queue)
 
     def snapshot(self) -> dict[str, Any]:
@@ -75,6 +84,9 @@ _JOBS_LOCK = threading.RLock()
 def create_generation_job(payload: GenerateLeadRequest, user_id: str) -> GenerationJobState:
     job = GenerationJobState(id=str(uuid.uuid4()), user_id=user_id)
     with _JOBS_LOCK:
+        active = _active_job_for_user_locked(user_id)
+        if active:
+            raise GenerationJobAlreadyActive(active.snapshot())
         _JOBS[job.id] = job
     _create_job_record(job.id, payload, user_id)
     job.emit(status="queued", stage="Queued", progress=0)
@@ -89,6 +101,42 @@ def get_job(job_id: str) -> GenerationJobState | None:
 def release_job(job_id: str) -> None:
     with _JOBS_LOCK:
         _JOBS.pop(job_id, None)
+
+
+def get_active_job_snapshot(user_id: str) -> dict[str, Any] | None:
+    with _JOBS_LOCK:
+        job = _active_job_for_user_locked(user_id)
+        return job.snapshot() if job else None
+
+
+def cancel_generation_job(job_id: str, user_id: str) -> dict[str, Any] | None:
+    job = get_job(job_id)
+    if job:
+        if job.user_id != user_id:
+            return None
+        if job.status in TERMINAL_JOB_STATUSES:
+            return job.snapshot()
+        job.cancel_requested = True
+        job.emit(status="canceling", stage="Stopping", error="")
+        return job.snapshot()
+
+    with SessionLocal() as db:
+        record = db.scalar(
+            select(LeadGenerationJob).where(
+                LeadGenerationJob.id == job_id,
+                LeadGenerationJob.user_id == user_id,
+            )
+        )
+        if not record:
+            return None
+        if record.status not in TERMINAL_JOB_STATUSES:
+            record.status = "canceled"
+            record.error = ""
+            record.finished_at = datetime.now(timezone.utc)
+            db.add(record)
+            db.commit()
+            db.refresh(record)
+        return _snapshot_from_record(record)
 
 
 def get_job_snapshot(job_id: str, user_id: str) -> dict[str, Any] | None:
@@ -202,6 +250,10 @@ def _stage_from_progress(status: str, progress: int) -> str:
         return "Complete"
     if status == "failed":
         return "Failed"
+    if status == "canceling":
+        return "Stopping"
+    if status == "canceled":
+        return "Stopped"
     thresholds = [
         (98, "Saving Leads"),
         (95, "Creating Personalized Outreach"),
@@ -216,3 +268,14 @@ def _stage_from_progress(status: str, progress: int) -> str:
         if progress >= minimum:
             return stage
     return "Queued"
+
+
+def _active_job_for_user_locked(user_id: str) -> GenerationJobState | None:
+    return next(
+        (
+            job
+            for job in _JOBS.values()
+            if job.user_id == user_id and job.status in ACTIVE_JOB_STATUSES
+        ),
+        None,
+    )

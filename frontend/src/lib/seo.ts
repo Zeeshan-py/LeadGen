@@ -257,7 +257,7 @@ export function organizationJsonLd() {
     "@id": absoluteUrl("/#organization"),
     name: siteConfig.name,
     url: siteConfig.url,
-    logo: absoluteUrl("/brand/icon.svg"),
+    logo: absoluteUrl("/brand/leadforge-icon.png"),
     email: siteConfig.supportEmail,
     contactPoint: [
       {

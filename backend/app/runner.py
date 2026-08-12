@@ -29,7 +29,9 @@ from .google_sheets import build_sheets_store
 from .job_state import (
     PIPELINE,
     GenerationJobState,
+    cancel_generation_job,
     create_generation_job,
+    get_active_job_snapshot,
     get_job,
     get_job_snapshot,
     get_latest_job_snapshot,
@@ -52,12 +54,18 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "PIPELINE",
     "GenerationJobState",
+    "cancel_generation_job",
     "create_generation_job",
+    "get_active_job_snapshot",
     "get_job",
     "get_job_snapshot",
     "get_latest_job_snapshot",
     "run_generation_job",
 ]
+
+
+class GenerationCancelled(RuntimeError):
+    """Raised internally when a lead generation job receives a stop request."""
 
 
 class OptionalSheetsStore:
@@ -103,12 +111,15 @@ def run_generation_job(job_id: str, payload: GenerateLeadRequest, user_id: str) 
         with SessionLocal() as db:
             settings = effective_settings(settings, db, user_id)
             settings.require_generation_credentials()
+            _raise_if_cancelled(job)
             campaign = _create_campaign(db, payload, user_id)
             job.campaign_id = campaign.id
             update_job_record(db, job, status="running", campaign_id=campaign.id)
             job.emit(status="running", stage="Searching Google Maps", progress=4)
 
+            _raise_if_cancelled(job)
             raw_leads = LeadSearchService(settings).search(payload)
+            _raise_if_cancelled(job)
             job.emit(
                 stage="Searching Google Maps",
                 lead_counter=len(raw_leads),
@@ -134,6 +145,7 @@ def run_generation_job(job_id: str, payload: GenerateLeadRequest, user_id: str) 
                 len(candidates),
             )
             for index, lead in enumerate(candidates, start=1):
+                _raise_if_cancelled(job)
                 base_progress = 14 + int((index - 1) / max_count * 78)
                 if lead.dedupe_key() in existing_keys:
                     record_event(
@@ -150,10 +162,7 @@ def run_generation_job(job_id: str, payload: GenerateLeadRequest, user_id: str) 
                         payload=payload,
                         campaign=campaign,
                         base_progress=base_progress,
-                        report_progress=lambda stage, progress: job.emit(
-                            stage=stage,
-                            progress=progress,
-                        ),
+                        report_progress=lambda stage, progress: _emit_progress(job, stage, progress),
                     )
                     existing_keys.add(lead.dedupe_key())
                     leads_for_sheets.append(lead)
@@ -195,7 +204,9 @@ def run_generation_job(job_id: str, payload: GenerateLeadRequest, user_id: str) 
                     )
                     logger.exception("Lead processing failed for %s", lead.business_name)
 
+            _raise_if_cancelled(job)
             sheets_store.upsert_leads(leads_for_sheets)
+            _raise_if_cancelled(job)
             campaign.status = "completed"
             campaign.leads_generated = job.success_counter
             db.add(campaign)
@@ -221,6 +232,23 @@ def run_generation_job(job_id: str, payload: GenerateLeadRequest, user_id: str) 
                 job.success_counter,
                 job.failure_counter,
             )
+    except GenerationCancelled:
+        logger.info("Generation job %s canceled by user", job_id)
+        with SessionLocal() as db:
+            if job.campaign_id:
+                campaign = db.get(Campaign, job.campaign_id)
+                if campaign and campaign.status in {"running", "queued"}:
+                    campaign.status = "canceled"
+                    campaign.leads_generated = job.success_counter
+                    db.add(campaign)
+                    record_event(
+                        db,
+                        "generation_canceled",
+                        campaign_id=campaign.id,
+                        metadata={"success_counter": job.success_counter, "failure_counter": job.failure_counter},
+                    )
+            job.emit(status="canceled", stage="Stopped", progress=job.progress, error="")
+            update_job_record(db, job, status="canceled", error="", finished=True)
     except Exception as exc:
         logger.exception("Generation job %s failed", job_id)
         job.error = _friendly_error(exc)
@@ -245,6 +273,16 @@ def run_generation_job(job_id: str, payload: GenerateLeadRequest, user_id: str) 
             )
     finally:
         release_job(job_id)
+
+
+def _emit_progress(job: GenerationJobState, stage: str, progress: int) -> None:
+    _raise_if_cancelled(job)
+    job.emit(stage=stage, progress=progress)
+
+
+def _raise_if_cancelled(job: GenerationJobState) -> None:
+    if job.cancel_requested or job.status == "canceling":
+        raise GenerationCancelled()
 
 
 def _build_pipeline(

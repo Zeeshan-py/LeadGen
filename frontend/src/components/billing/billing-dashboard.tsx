@@ -150,7 +150,7 @@ export function BillingDashboard() {
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-3">
-          <Metric label="Current plan" value={hasServiceAccess ? currentPlan?.name || "Active subscription" : "Free"} />
+          <Metric label="Current plan" value={hasServiceAccess ? currentPlan?.name || "Active subscription" : "No active plan"} />
           <Metric label="Status" value={formatStatus(overview?.subscription?.status)} />
           <Metric
             label={overview?.subscription?.cancel_at_period_end ? "Access until" : "Renewal date"}
@@ -299,7 +299,7 @@ function Metric({ label, value }: { label: string; value: string }) {
 }
 
 function formatStatus(status?: string | null) {
-  if (!status) return "None";
+  if (!status) return "Not subscribed";
   return status
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
