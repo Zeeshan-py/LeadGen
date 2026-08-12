@@ -45,6 +45,9 @@ export function PublicInfoPage({
           <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/terms">
             Terms
           </Link>
+          <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/refund">
+            Refunds
+          </Link>
           <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/contact">
             Contact
           </Link>

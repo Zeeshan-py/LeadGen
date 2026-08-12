@@ -262,7 +262,7 @@ export default function LandingPage() {
           <p className="mt-4 text-sm leading-7 text-muted-foreground">
             LeadForge AI provides public access to product information, support contact details, privacy practices, and terms of service without requiring visitors to sign in.
           </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Button asChild variant="outline">
               <Link href="/contact">Contact</Link>
             </Button>
@@ -271,6 +271,9 @@ export default function LandingPage() {
             </Button>
             <Button asChild variant="outline">
               <Link href="/terms">Terms of Service</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/refund">Refund Policy</Link>
             </Button>
           </div>
           <p className="mt-5 text-sm text-muted-foreground">
@@ -296,6 +299,9 @@ export default function LandingPage() {
           </Link>
           <Link className="hover:text-foreground" href="/terms">
             Terms
+          </Link>
+          <Link className="hover:text-foreground" href="/refund">
+            Refunds
           </Link>
           <Link className="hover:text-foreground" href="/contact">
             Contact

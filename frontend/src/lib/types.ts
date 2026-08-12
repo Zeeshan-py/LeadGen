@@ -187,6 +187,7 @@ export type BillingPlan = {
 
 export type BillingPlansResponse = {
   environment: "sandbox" | "production";
+  client_token: string;
   client_token_configured: boolean;
   checkout_ready: boolean;
   plans: BillingPlan[];

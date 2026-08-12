@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import time
@@ -41,6 +42,17 @@ class PaddleConfigurationError(RuntimeError):
 
 class PaddleAPIError(RuntimeError):
     """Raised when Paddle returns a failed API response."""
+
+
+class PaddleWebhookSourceError(RuntimeError):
+    """Raised when a live Paddle webhook request does not come from Paddle."""
+
+    def __init__(self, message: str, *, status_code: int = 403) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+_PADDLE_IP_CACHE: dict[str, tuple[float, list[ipaddress.IPv4Network]]] = {}
 
 
 def billing_plans(settings: Settings) -> list[BillingPlan]:
@@ -113,6 +125,7 @@ def billing_plans_response(settings: Settings) -> BillingPlansResponse:
     plans = billing_plans(settings)
     return BillingPlansResponse(
         environment="sandbox" if settings.paddle_is_sandbox else "production",
+        client_token=settings.paddle_client_token,
         client_token_configured=bool(settings.paddle_client_token),
         checkout_ready=bool(settings.paddle_client_token) and all(plan.configured for plan in plans),
         plans=plans,
@@ -211,6 +224,49 @@ async def create_portal_session(
     if subscription_ids:
         body["subscription_ids"] = subscription_ids
     return await paddle_api_request(settings, "POST", f"/customers/{customer_id}/portal-sessions", json_body=body)
+
+
+async def verify_paddle_webhook_source_ip(settings: Settings, source_ip: str) -> None:
+    if not settings.paddle_webhook_ip_allowlist_required:
+        return
+    try:
+        address = ipaddress.ip_address(source_ip)
+    except ValueError as exc:
+        raise PaddleWebhookSourceError("Unable to determine Paddle webhook source IP") from exc
+    if address.version != 4:
+        raise PaddleWebhookSourceError("Paddle webhook source IP must be IPv4")
+
+    networks = await paddle_ipv4_networks(settings)
+    if not any(address in network for network in networks):
+        raise PaddleWebhookSourceError("Paddle webhook source IP is not allowed")
+
+
+async def paddle_ipv4_networks(settings: Settings) -> list[ipaddress.IPv4Network]:
+    cache_key = settings.paddle_ips_url
+    cache = _PADDLE_IP_CACHE.get(cache_key)
+    now = time.time()
+    cache_seconds = max(60, settings.paddle_ip_cache_seconds)
+    if cache and now - cache[0] < cache_seconds:
+        return cache[1]
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            response = await client.get(settings.paddle_ips_url, headers={"Accept": "application/json"})
+        response.raise_for_status()
+        payload = response.json()
+        data = payload.get("data") if isinstance(payload, dict) else {}
+        cidrs = data.get("ipv4_cidrs") if isinstance(data, dict) else []
+        networks = [ipaddress.ip_network(str(cidr), strict=False) for cidr in cidrs]
+        if not networks:
+            raise ValueError("Paddle IP response did not include ipv4_cidrs")
+    except Exception as exc:
+        if cache:
+            logger.warning("Using cached Paddle IP allowlist after refresh failure: %s", exc)
+            return cache[1]
+        raise PaddleWebhookSourceError("Unable to refresh Paddle IP allowlist", status_code=503) from exc
+
+    _PADDLE_IP_CACHE[cache_key] = (now, networks)
+    return networks
 
 
 async def update_subscription_plan(

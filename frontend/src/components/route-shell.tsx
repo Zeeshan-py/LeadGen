@@ -19,6 +19,7 @@ const publicRoutes = new Set([
   "/reset-password",
   "/privacy",
   "/terms",
+  "/refund",
   "/contact",
   "/about",
   "/features",

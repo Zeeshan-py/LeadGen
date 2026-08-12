@@ -238,6 +238,7 @@ class BillingPlan(BaseModel):
 
 class BillingPlansResponse(BaseModel):
     environment: Literal["sandbox", "production"]
+    client_token: str = ""
     client_token_configured: bool = False
     checkout_ready: bool = False
     plans: list[BillingPlan]

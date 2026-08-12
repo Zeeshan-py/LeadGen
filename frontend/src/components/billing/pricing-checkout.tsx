@@ -25,10 +25,12 @@ export function PricingCheckout() {
   const { user, loading } = useAuth();
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [environment, setEnvironment] = useState<"sandbox" | "production">("sandbox");
+  const [clientToken, setClientToken] = useState("");
   const [plansLoading, setPlansLoading] = useState(true);
   const [checkoutPlan, setCheckoutPlan] = useState("");
   const checkoutCompletedRef = useRef(false);
   const cancelUrlRef = useRef("/billing/cancel");
+  const paymentLinkOpenedRef = useRef("");
 
   useEffect(() => {
     let mounted = true;
@@ -37,6 +39,7 @@ export function PricingCheckout() {
         if (!mounted) return;
         setPlans(payload.plans);
         setEnvironment(payload.environment);
+        setClientToken(payload.client_token || "");
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : "Unable to load billing plans"))
       .finally(() => {
@@ -66,16 +69,21 @@ export function PricingCheckout() {
     }
   }, [environment, router]);
 
-  const paddleInstance = useCallback(async (session: PaddleCheckoutSession) => {
-    const key = `${session.environment}:${session.client_token}`;
-    if (!session.client_token) {
+  const paddleFromToken = useCallback(async (
+    paddleEnvironment: "sandbox" | "production",
+    token: string,
+    paddleCustomerId: string,
+  ) => {
+    const key = `${paddleEnvironment}:${token}:${paddleCustomerId || "new-customer"}`;
+    if (!token) {
       throw new Error("Paddle checkout client token is not configured");
     }
     if (!paddlePromise || paddleInstanceKey !== key) {
       paddleInstanceKey = key;
       paddlePromise = initializePaddle({
-        environment: session.environment as Environments,
-        token: session.client_token,
+        environment: paddleEnvironment as Environments,
+        token,
+        ...(paddleCustomerId ? { pwCustomer: { id: paddleCustomerId } } : {}),
         eventCallback: handlePaddleEvent,
       });
     }
@@ -85,6 +93,10 @@ export function PricingCheckout() {
     }
     return paddle;
   }, [handlePaddleEvent]);
+
+  const paddleInstance = useCallback(async (session: PaddleCheckoutSession, paddleCustomerId: string) => {
+    return paddleFromToken(session.environment, session.client_token, paddleCustomerId);
+  }, [paddleFromToken]);
 
   const openCheckout = useCallback(async (plan: BillingPlan) => {
     if (!user) {
@@ -101,9 +113,10 @@ export function PricingCheckout() {
       const session = await createPaddleCheckout({ plan_key: plan.key });
       cancelUrlRef.current = session.cancel_url;
       setEnvironment(session.environment);
-      const paddle = await paddleInstance(session);
-      const customer = session.customer.paddle_customer_id
-        ? { id: session.customer.paddle_customer_id }
+      const paddleCustomerId = session.customer.paddle_customer_id || "";
+      const paddle = await paddleInstance(session, paddleCustomerId);
+      const customer = paddleCustomerId
+        ? { id: paddleCustomerId }
         : { email: session.customer.email || user.email };
       trackEvent("begin_checkout", {
         plan: session.plan_key,
@@ -136,6 +149,51 @@ export function PricingCheckout() {
     }
   }, [selectedPlan, user, loading, openCheckout]);
 
+  useEffect(() => {
+    const transactionId = searchParams.get("_ptxn") || "";
+    if (!transactionId.startsWith("txn_") || plansLoading) {
+      return;
+    }
+
+    const key = `${environment}:${transactionId}`;
+    if (paymentLinkOpenedRef.current === key) {
+      return;
+    }
+    paymentLinkOpenedRef.current = key;
+
+    if (!clientToken) {
+      toast.error("Paddle checkout client token is not configured");
+      return;
+    }
+
+    checkoutCompletedRef.current = false;
+    setCheckoutPlan("payment-link");
+    paddleFromToken(environment, clientToken, "")
+      .then((paddle) => {
+        trackEvent("begin_checkout", {
+          provider: "paddle",
+          environment,
+          source: "paddle_payment_link",
+          transaction_id: transactionId,
+        });
+        paddle.Checkout.open({
+          transactionId,
+          settings: {
+            displayMode: "overlay",
+            theme: "dark",
+            successUrl: `${window.location.origin}/billing/success`,
+            allowLogout: false,
+            variant: "one-page",
+          },
+        });
+      })
+      .catch((error) => {
+        paymentLinkOpenedRef.current = "";
+        toast.error(error instanceof Error ? error.message : "Unable to open Paddle checkout");
+      })
+      .finally(() => setCheckoutPlan(""));
+  }, [clientToken, environment, paddleFromToken, plansLoading, searchParams]);
+
   return (
     <main className="min-h-svh bg-background text-foreground">
       <header className="border-b border-border/70 bg-background/90 backdrop-blur-xl">
@@ -150,6 +208,12 @@ export function PricingCheckout() {
             </Link>
             <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/contact">
               Contact
+            </Link>
+            <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/terms">
+              Terms
+            </Link>
+            <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/refund">
+              Refunds
             </Link>
             <Link className="rounded-md px-3 py-2 hover:bg-secondary hover:text-foreground" href="/login">
               Login
@@ -221,6 +285,24 @@ export function PricingCheckout() {
           </div>
         )}
       </section>
+
+      <footer className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 border-t border-border/70 px-4 py-6 text-sm text-muted-foreground md:px-6">
+        <p>LeadForge AI billing is powered by Paddle.</p>
+        <nav aria-label="Billing policies" className="flex flex-wrap items-center gap-4">
+          <Link className="hover:text-foreground" href="/contact">
+            Contact
+          </Link>
+          <Link className="hover:text-foreground" href="/privacy">
+            Privacy
+          </Link>
+          <Link className="hover:text-foreground" href="/terms">
+            Terms
+          </Link>
+          <Link className="hover:text-foreground" href="/refund">
+            Refunds
+          </Link>
+        </nav>
+      </footer>
     </main>
   );
 }

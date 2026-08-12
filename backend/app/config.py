@@ -99,6 +99,8 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("PADDLE_WEBHOOK_SECRET", "PADDLE_NOTIFICATION_WEBHOOK_SECRET"),
     )
     paddle_webhook_tolerance_seconds: int = Field(default=300, validation_alias="PADDLE_WEBHOOK_TOLERANCE_SECONDS")
+    paddle_webhook_ip_allowlist: bool | None = Field(default=None, validation_alias="PADDLE_WEBHOOK_IP_ALLOWLIST")
+    paddle_ip_cache_seconds: int = Field(default=3600, validation_alias="PADDLE_IP_CACHE_SECONDS")
     paddle_success_url: str = Field(default="", validation_alias="PADDLE_SUCCESS_URL")
     paddle_cancel_url: str = Field(default="", validation_alias="PADDLE_CANCEL_URL")
     paddle_basic_product_id: str = Field(default="", validation_alias="PADDLE_BASIC_PRODUCT_ID")
@@ -235,6 +237,16 @@ class Settings(BaseSettings):
     @property
     def paddle_api_base_url(self) -> str:
         return "https://sandbox-api.paddle.com" if self.paddle_is_sandbox else "https://api.paddle.com"
+
+    @property
+    def paddle_ips_url(self) -> str:
+        return "https://sandbox-api.paddle.com/ips" if self.paddle_is_sandbox else "https://api.paddle.com/ips"
+
+    @property
+    def paddle_webhook_ip_allowlist_required(self) -> bool:
+        if self.paddle_webhook_ip_allowlist is not None:
+            return self.paddle_webhook_ip_allowlist
+        return self.environment.lower() == "production" and not self.paddle_is_sandbox
 
     def oauth_redirect_uri(self, provider: str) -> str:
         if provider == "google" and self.google_oauth_redirect_uri:

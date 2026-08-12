@@ -129,6 +129,14 @@ export const publicPages = [
     changeFrequency: "yearly",
   },
   {
+    path: "/refund",
+    title: "Refund and Cancellation Policy",
+    description:
+      "Read the LeadForge AI refund and cancellation policy for monthly SaaS subscriptions, renewals, cancellations, and billing support.",
+    sitemapPriority: 0.6,
+    changeFrequency: "yearly",
+  },
+  {
     path: "/login",
     title: "Login",
     description:
@@ -282,9 +290,11 @@ export function softwareApplicationJsonLd() {
     url: siteConfig.url,
     description: siteConfig.description,
     offers: {
-      "@type": "Offer",
-      price: "0",
+      "@type": "AggregateOffer",
+      lowPrice: "15",
+      highPrice: "50",
       priceCurrency: "USD",
+      offerCount: "3",
       availability: "https://schema.org/OnlineOnly",
       url: absoluteUrl("/pricing"),
     },

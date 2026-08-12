@@ -16,6 +16,7 @@ from .models import User
 from .paddle_billing import (
     PaddleAPIError,
     PaddleConfigurationError,
+    PaddleWebhookSourceError,
     billing_history,
     billing_overview,
     billing_plans_response,
@@ -31,7 +32,9 @@ from .paddle_billing import (
     update_subscription_plan,
     upsert_subscription,
     verify_paddle_signature,
+    verify_paddle_webhook_source_ip,
 )
+from .rate_limit import client_ip
 from .schemas import (
     BillingHistoryResponse,
     BillingOverview,
@@ -203,6 +206,7 @@ async def paddle_webhook(
     raw_body = await request.body()
     signature = request.headers.get("Paddle-Signature", "")
     try:
+        await verify_paddle_webhook_source_ip(settings, client_ip(request))
         verify_paddle_signature(
             raw_body,
             signature,
@@ -214,6 +218,9 @@ async def paddle_webhook(
     except PaddleConfigurationError as exc:
         logger.exception("Paddle webhook rejected because verification is not configured")
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except PaddleWebhookSourceError as exc:
+        logger.warning("Paddle webhook rejected by source IP allowlist: %s", exc)
+        raise HTTPException(status_code=exc.status_code, detail="Invalid Paddle webhook source") from exc
     except (json.JSONDecodeError, ValueError) as exc:
         logger.warning("Invalid Paddle webhook payload: %s", exc)
         raise HTTPException(status_code=400, detail="Invalid Paddle webhook") from exc

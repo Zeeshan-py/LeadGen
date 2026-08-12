@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
 import time
 import unittest
@@ -14,7 +15,16 @@ from sqlalchemy.orm import Session
 from app.config import Settings
 from app.database import Base
 from app.models import PaddleSubscription, User
-from app.paddle_billing import billing_plans, create_checkout_payload, process_paddle_webhook, verify_paddle_signature
+from app.paddle_billing import (
+    _PADDLE_IP_CACHE,
+    PaddleWebhookSourceError,
+    billing_plans,
+    billing_plans_response,
+    create_checkout_payload,
+    process_paddle_webhook,
+    verify_paddle_signature,
+    verify_paddle_webhook_source_ip,
+)
 from app.paddle_routes import paddle_webhook_status
 
 
@@ -131,12 +141,39 @@ class PaddleBillingTests(unittest.TestCase):
         self.assertIn("800 leads per month", plans["agent"].features)
         self.assertIn("1,500 leads per month", plans["agency"].features)
 
+    def test_billing_plans_response_exposes_public_client_token(self) -> None:
+        payload = billing_plans_response(self.settings)
+
+        self.assertEqual(payload.client_token, "test_client_token")
+        self.assertTrue(payload.client_token_configured)
+        self.assertTrue(payload.checkout_ready)
+
     def test_webhook_get_reports_endpoint_status(self) -> None:
         payload = paddle_webhook_status()
 
         self.assertEqual(payload["status"], "ok")
         self.assertEqual(payload["method"], "POST")
         self.assertIn("signed POST", payload["message"])
+
+
+class PaddleWebhookIpAllowlistTests(unittest.IsolatedAsyncioTestCase):
+    async def test_live_production_requires_paddle_source_ip(self) -> None:
+        settings = Settings(_env_file=None, environment="production", PADDLE_ENV="production")
+        _PADDLE_IP_CACHE[settings.paddle_ips_url] = (
+            time.time(),
+            [ipaddress.ip_network("34.194.127.46/32")],
+        )
+        try:
+            await verify_paddle_webhook_source_ip(settings, "34.194.127.46")
+            with self.assertRaises(PaddleWebhookSourceError):
+                await verify_paddle_webhook_source_ip(settings, "203.0.113.10")
+        finally:
+            _PADDLE_IP_CACHE.pop(settings.paddle_ips_url, None)
+
+    async def test_sandbox_does_not_require_paddle_source_ip(self) -> None:
+        settings = Settings(_env_file=None, environment="production", PADDLE_ENV="sandbox")
+
+        await verify_paddle_webhook_source_ip(settings, "203.0.113.10")
 
 
 if __name__ == "__main__":
